@@ -1,0 +1,186 @@
+name: 📈 Relatório Semanal de Contribuições
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Toda segunda-feira às 09h UTC
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: 'Número de dias para analisar'
+        required: false
+        default: '7'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-report:
+    name: 📈 Gerar Relatório Semanal
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Período de Análise
+        id: period
+        run: |
+          DAYS=${{ github.event.inputs.days_back || '7' }}
+          SINCE=$(date -d "$DAYS days ago" -u '+%Y-%m-%dT%H:%M:%SZ')
+          UNTIL=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          echo "since=$SINCE" >> $GITHUB_OUTPUT
+          echo "until=$UNTIL" >> $GITHUB_OUTPUT
+          echo "days=$DAYS" >> $GITHUB_OUTPUT
+
+      - name: Coletar Estatísticas de Commits
+        id: stats
+        run: |
+          SINCE=${{ steps.period.outputs.since }}
+          DAYS=${{ steps.period.outputs.days }}
+
+          echo "## 📈 Relatório Semanal de Contribuições" >> $GITHUB_STEP_SUMMARY
+          echo "**Período:** Últimos $DAYS dias | **Gerado em:** $(date -u '+%d/%m/%Y %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Total de commits
+          TOTAL=$(git log --since="$DAYS days ago" --oneline | wc -l)
+          echo "**Total de Commits:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Commits por autor
+          echo "### 👥 Commits por Desenvolvedor" >> $GITHUB_STEP_SUMMARY
+          echo "| Desenvolvedor | Commits | % |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------------|---------|---|" >> $GITHUB_STEP_SUMMARY
+          git log --since="$DAYS days ago" --format="%an" | \
+            sort | uniq -c | sort -rn | \
+            awk -v total="$TOTAL" '{
+              pct = (total > 0) ? int($1 * 100 / total) : 0;
+              print "| " $2 " " $3 " | " $1 " | " pct "% |"
+            }' >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Arquivos mais modificados
+          echo "### 📂 Arquivos Mais Modificados" >> $GITHUB_STEP_SUMMARY
+          echo "| Arquivo | Modificações |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------------|" >> $GITHUB_STEP_SUMMARY
+          git log --since="$DAYS days ago" --name-only --format="" | \
+            grep -v "^$" | sort | uniq -c | sort -rn | head -10 | \
+            awk '{print "| `" $2 "` | " $1 " |"}' >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Commits por dia da semana
+          echo "### 📅 Atividade por Dia" >> $GITHUB_STEP_SUMMARY
+          echo "| Dia | Commits |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|---------|" >> $GITHUB_STEP_SUMMARY
+          git log --since="$DAYS days ago" --format="%ad" --date=format:"%A" | \
+            sort | uniq -c | sort -k2 | \
+            awk '{print "| " $2 " | " $1 " |"}' >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Branches ativas
+          echo "### 🌿 Branches com Atividade" >> $GITHUB_STEP_SUMMARY
+          git branch -r --sort=-committerdate | head -10 | \
+            sed 's/origin\///' | \
+            while read branch; do
+              COMMITS=$(git log --since="$DAYS days ago" --oneline "origin/$branch" 2>/dev/null | wc -l)
+              if [ "$COMMITS" -gt 0 ]; then
+                echo "- \`$branch\` — $COMMITS commits" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+
+      - name: Gerar Análise IA do Período
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DAYS: ${{ steps.period.outputs.days }}
+        run: |
+          # Coletar dados para IA
+          STATS=$(git log --since="$DAYS days ago" --format="%an|%s|%ad" --date=short | head -50)
+          AUTHORS=$(git log --since="$DAYS days ago" --format="%an" | sort | uniq -c | sort -rn)
+          TOTAL=$(git log --since="$DAYS days ago" --oneline | wc -l)
+
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"gpt-4o\",
+              \"max_tokens\": 800,
+              \"messages\": [
+                {
+                  \"role\": \"system\",
+                  \"content\": \"Você é um assistente técnico especializado em gestão de desenvolvimento de software. Responda sempre em português brasileiro.\"
+                },
+                {
+                  \"role\": \"user\",
+                  \"content\": \"Analise as contribuições de desenvolvimento dos últimos $DAYS dias e gere um relatório gerencial em português brasileiro.\\n\\nEstatísticas:\\n- Total de commits: $TOTAL\\n\\nCommits por autor:\\n$AUTHORS\\n\\nAmostra de commits recentes:\\n$STATS\\n\\nGere um relatório com:\\n1. **Resumo Executivo**: Visão geral da semana de desenvolvimento\\n2. **Destaques**: Principais contribuições e desenvolvimentos\\n3. **Padrões Observados**: Tendências no estilo de trabalho da equipe\\n4. **Recomendações**: Sugestões para melhorar o fluxo de trabalho\\n\\nSeja objetivo e útil para um gestor técnico.\"
+                }
+              ]
+            }")
+
+          SUMMARY=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          if 'choices' in data and len(data['choices']) > 0:
+              print(data['choices'][0]['message']['content'])
+          else:
+              print('API Key não configurada. Configure OPENAI_API_KEY nos secrets do repositório.')
+          ")
+
+          echo "### 🤖 Análise Gerencial (IA)" >> $GITHUB_STEP_SUMMARY
+          echo "$SUMMARY" >> $GITHUB_STEP_SUMMARY
+
+      - name: Criar Issue com Relatório
+        uses: actions/github-script@v7
+        env:
+          DAYS: ${{ steps.period.outputs.days }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const days = process.env.DAYS;
+            const date = new Date().toLocaleDateString('pt-BR');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📈 Relatório Semanal de Contribuições — ${date}`,
+              body: `## 📈 Relatório Semanal de Contribuições\n\n**Período analisado:** Últimos ${days} dias\n**Data de geração:** ${new Date().toISOString()}\n\n> ℹ️ O relatório completo com estatísticas detalhadas e análise de IA está disponível nos [GitHub Actions](../../actions/workflows/weekly-report.yml).\n\nConsulte o **Job Summary** da execução mais recente para ver:\n- 👥 Commits por desenvolvedor\n- 📂 Arquivos mais modificados\n- 📅 Atividade por dia da semana\n- 🤖 Análise gerencial gerada por IA\n\n---\n*Gerado automaticamente pelo sistema de monitoramento.*`,
+              labels: ['relatório', 'automação'],
+            });
+      - name: Notificar Discord — Relatório Semanal
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DAYS: ${{ steps.period.outputs.days }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$DISCORD_WEBHOOK_URL" ] && echo "DISCORD_WEBHOOK_URL nao configurado, pulando." && exit 0
+
+          TOTAL=$(git log --since="$DAYS days ago" --oneline | wc -l)
+          TOP=$(git log --since="$DAYS days ago" --format="%an" | sort | uniq -c | sort -rn | head -3 | awk '{print $2" "$3" ("$1" commits)"}' | paste -sd ", ")
+          DATE=$(date -u '+%d/%m/%Y')
+
+          PAYLOAD=$(jq -nc             --arg title "📈 Relatório Semanal — ${REPO##*/}"             --arg period "Últimos $DAYS dias · $DATE"             --arg total  "$TOTAL commits no período"             --arg top    "$TOP"             --arg url    "$RUN_URL"             '{
+              embeds: [{
+                title: $title,
+                color: 3447003,
+                url:   $url,
+                fields: [
+                  { name: "📅 Período",           value: $period, inline: false },
+                  { name: "📊 Total de commits",   value: $total,  inline: true  },
+                  { name: "🏆 Top contribuidores", value: $top,    inline: false },
+                  { name: "📋 Relatório completo", value: "Acesse o link acima para ver a análise de IA e estatísticas detalhadas", inline: false }
+                ],
+                footer: { text: "GitHub Actions · Relatório gerado automaticamente" },
+                timestamp: (now | todate)
+              }]
+            }')
+
+          HTTP=$(curl -s -o /tmp/discord_resp.txt -w "%{http_code}"             -X POST "$DISCORD_WEBHOOK_URL"             -H "Content-Type: application/json"             -d "$PAYLOAD")
+
+          [ "$HTTP" = "204" ] && echo "Discord notificado (HTTP 204)" || echo "Discord retornou HTTP $HTTP"
