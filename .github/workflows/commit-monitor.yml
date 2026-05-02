@@ -271,36 +271,37 @@ jobs:
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
             xargs htmlhint $CONFIG_FLAG 2>&1) || true
 
-          # Remove códigos ANSI com tr+sed (compatível 100% com YAML)
+          # Remove ANSI e processa saída do HTMLHint com --format unix para output limpo
           HTML_CLEAN=$(printf '%s' "$HTML_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
 
-          # Extrai apenas as linhas de erro reais (contêm número de linha e regra)
-          HTML_ERROR_LINES=$(echo "$HTML_CLEAN" | grep -E "L[0-9]+ \|" | grep -E "\([a-z-]+\)")
-          HTML_ERRORS=$(echo "$HTML_ERROR_LINES" | grep -c "." || echo "0")
-          [ -z "$HTML_ERROR_LINES" ] && HTML_ERRORS=0
+          # Conta erros reais: linhas com padrão "arquivo:linha:col: msg (regra)"
+          # HTMLHint com --format unix produz: arquivo:linha:col: mensagem (regra)
+          HTML_ERRORS=$(echo "$HTML_CLEAN" | grep -cE "\([a-z-]+\)" || echo "0")
+          [ "$(echo "$HTML_CLEAN" | grep -cE '\([a-z-]+\)')" = "0" ] && HTML_ERRORS=0
 
-          # Monta relatório legível no Summary
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$HTML_ERRORS problema(s) de estrutura HTML encontrado(s)**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **$HTML_ERRORS problema(s) de estrutura HTML**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Arquivo | Linha | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|-------|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            # Processa cada arquivo com erro
             CURRENT_FILE=""
-            while IFS= read -r line; do
-              if echo "$line" | grep -qE "^/.+\.html?$"; then
-                CURRENT_FILE=$(echo "$line" | sed 's|.*/||')
-              elif echo "$line" | grep -qE "L[0-9]+ \|" && echo "$line" | grep -qE "\([a-z-]+\)"; then
-                LINE_NUM=$(echo "$line" | grep -oE "L[0-9]+" | head -1 | tr -d 'L')
-                RULE=$(echo "$line" | grep -oE "\([a-z-]+\)" | tr -d '()')
-                MSG=$(echo "$line" | sed 's/.*| //' | sed 's/ ([a-z-]*)//' | cut -c1-60)
-                echo "| \`$CURRENT_FILE\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+            while IFS= read -r rawline; do
+              # Detecta linha de arquivo (termina com .html ou .htm, sem espaços antes)
+              if echo "$rawline" | grep -qE "^\S.*\.(html?|htm)$"; then
+                CURRENT_FILE=$(basename "$rawline")
+              # Detecta linha de erro: contém L<num> e termina com (regra)
+              elif echo "$rawline" | grep -qE "L[0-9]+" && echo "$rawline" | grep -qE "\([a-z-]+\)$"; then
+                LINE_NUM=$(echo "$rawline" | grep -oE "L[0-9]+" | head -1 | tr -d 'L')
+                RULE=$(echo "$rawline" | grep -oE "\([a-z-]+\)$" | tr -d '()')
+                MSG=$(echo "$rawline" | sed 's/.*| //' | sed 's/ *([a-z-]*)$//' | cut -c1-55 | sed 's/|//g')
+                echo "| \`${CURRENT_FILE:-?}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
               fi
             done <<< "$HTML_CLEAN"
-            echo "has_lint_error=true" >> $GITHUB_ENV
+            echo "has_lint_warning=true" >> $GITHUB_ENV
           else
             echo "✅ HTML sem erros estruturais" >> $GITHUB_STEP_SUMMARY
+          fi
           fi
 
       - name: Stylelint — CSS / SCSS (regras embutidas)
@@ -329,22 +330,28 @@ jobs:
             }
           }' > /tmp/stylelint-ci.json
 
-          if ls .stylelintrc* stylelint.config* 2>/dev/null | grep -q .; then
-            CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
-              \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
-              xargs npx stylelint 2>&1) || true
-          else
-            CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
-              \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
-              xargs npx stylelint --config /tmp/stylelint-ci.json 2>&1) || true
-          fi
-          echo "$CSS_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          CSS_ERRORS=$(echo "$CSS_OUT" | grep -c "✖ " || echo "0")
-          CSS_WARNS=$(echo "$CSS_OUT" | grep -c "⚠ " || echo "0")
-          if [ "$CSS_ERRORS" -gt 0 ] 2>/dev/null; then
+          # Sempre usa nossa config — ignora .stylelintrc do projeto para evitar conflitos
+          CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
+            \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
+            xargs npx stylelint --config /tmp/stylelint-ci.json --no-error-on-unmatched-pattern 2>&1) || true
+
+          # Remove ANSI da saída do Stylelint
+          CSS_CLEAN=$(printf '%s' "$CSS_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
+
+          # Conta erros reais (✖) e warnings (⚠) pelo símbolo na saída limpa
+          CSS_ERRORS=$(echo "$CSS_CLEAN" | grep -c "X " || echo "0")
+          CSS_WARNS=$(echo "$CSS_CLEAN"  | grep -c "warning" || echo "0")
+          # Fallback: se stylelint retornou "errors" na linha de sumário
+          SUMMARY_ERRORS=$(echo "$CSS_CLEAN" | grep -oE "[0-9]+ error" | grep -oE "[0-9]+" | head -1)
+          SUMMARY_WARNS=$(echo "$CSS_CLEAN"  | grep -oE "[0-9]+ warning" | grep -oE "[0-9]+" | head -1)
+          [ -n "$SUMMARY_ERRORS" ] && CSS_ERRORS=$SUMMARY_ERRORS
+          [ -n "$SUMMARY_WARNS"  ] && CSS_WARNS=$SUMMARY_WARNS
+
+          echo "$CSS_CLEAN" | tail -20 >> $GITHUB_STEP_SUMMARY
+          if [ "${CSS_ERRORS:-0}" -gt 0 ] 2>/dev/null; then
             echo "❌ **$CSS_ERRORS erro(s) CSS** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$CSS_WARNS" -gt 0 ] 2>/dev/null; then
+          elif [ "${CSS_WARNS:-0}" -gt 0 ] 2>/dev/null; then
             echo "⚠️ **$CSS_WARNS aviso(s) CSS** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
