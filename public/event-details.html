@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html class="light" lang="pt-br">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Memory Docs - Detalhes do Evento</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "var(--primary)",
+                        secondary: "var(--secondary)",
+                        surface: "var(--surface)",
+                        "on-surface": "var(--on-surface)",
+                        "surface-container-low": "var(--surface-container-low)",
+                        "surface-container-lowest": "var(--surface-container-lowest)",
+                        "surface-container-highest": "var(--surface-container-highest)",
+                        "primary-container": "var(--primary-container)",
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface">
+    <!-- Top Navigation Bar -->
+    <header class="bg-surface/80 backdrop-blur-md sticky top-0 z-50 border-b border-outline-variant/10">
+        <div class="flex justify-between items-center w-full px-8 h-20 max-w-[1440px] mx-auto">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard.html" class="flex items-center text-primary hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined">arrow_back</span>
+                </a>
+                <div class="text-2xl font-bold tracking-tighter text-primary brand-font">Memory Docs</div>
+            </div>
+            
+            <nav class="hidden md:flex items-center space-x-8 font-manrope text-sm font-semibold tracking-tight">
+            </nav>
+
+            <div class="flex items-center gap-6">
+                <!-- Dark Mode Toggle -->
+                <button id="dark-mode-toggle" class="w-10 h-10 rounded-full flex items-center justify-center text-secondary hover:bg-surface-container-highest transition-all active:scale-90" title="Alternar Tema">
+                    <span class="material-symbols-outlined dark:hidden">dark_mode</span>
+                    <span class="material-symbols-outlined hidden dark:block">light_mode</span>
+                </button>
+
+                <button id="logout-btn" class="text-secondary hover:text-primary transition-all active:scale-95 flex items-center gap-2">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="hidden lg:block text-xs font-bold uppercase tracking-widest">Sair</span>
+                </button>
+                <div class="w-10 h-10 rounded-full border-2 border-primary/10 overflow-hidden bg-primary-container flex items-center justify-center text-white font-bold">A</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-[1440px] mx-auto px-8 py-12">
+        <!-- Hero Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end mb-16 animate-fade-in">
+            <div class="lg:col-span-8">
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="px-4 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-widest">Curadoria Editorial</span>
+                    <span id="event-date-badge" class="text-xs font-semibold text-secondary">Aguardando dados...</span>
+                </div>
+                <h1 id="event-title" class="text-display-lg text-5xl lg:text-7xl font-bold font-manrope text-on-surface leading-none tracking-tight">Nome do Evento</h1>
+                <p id="event-description" class="mt-8 text-lg text-secondary/80 leading-relaxed max-w-2xl">Carregando descrição do seu evento...</p>
+            </div>
+            <div class="lg:col-span-4 flex justify-end">
+                <div class="bg-surface-container-lowest dark:bg-surface-container-low rounded-[2rem] shadow-[0px_5px_20px_rgba(25,28,30,0.02)] p-10 flex-grow animate-fade-in stagger-1">
+                    <h3 class="text-Headline-SM font-manrope font-bold mb-6">Status Geral</h3>
+                    <div class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-secondary uppercase tracking-widest">Capacidade</span>
+                            <span id="event-capacity" class="text-xl font-bold text-on-surface">---</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-secondary uppercase tracking-widest">Convidados</span>
+                            <span id="guest-count" class="text-xl font-bold text-on-surface">---</span>
+                        </div>
+                        <div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+                            <div id="capacity-progress" class="bg-primary h-full transition-all duration-1000" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+            <!-- Left: Schedule / Timeline -->
+            <div class="lg:col-span-8 space-y-12">
+                <div class="bg-surface-container-lowest p-10 rounded-[2.5rem] shadow-[0px_10px_40px_rgba(25,28,30,0.04)]">
+                    <div class="flex justify-between items-center mb-10">
+                        <h2 class="text-2xl font-bold font-manrope">Cronograma</h2>
+                        <div class="flex items-center gap-4">
+                            <button id="btn-export-pdf" class="text-secondary text-xs font-bold flex items-center gap-1 hover:text-primary transition-colors">
+                                <span class="material-symbols-outlined text-sm">picture_as_pdf</span> Exportar Cronograma
+                            </button>
+                            <button id="add-schedule-btn" class="text-primary text-xs font-bold flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">add</span> Adicionar Item
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="schedule-container" class="space-y-8 relative pl-8">
+                        <div class="absolute left-0 top-0 bottom-0 w-[2px] bg-outline-variant/20 rounded-full"></div>
+                        <!-- Items dynamically injected -->
+                    </div>
+                    
+                    <div id="schedule-empty" class="hidden text-center py-12">
+                        <p class="text-sm font-semibold text-secondary/40">Sem itens no cronograma.</p>
+                    </div>
+                </div>
+
+                <!-- Gallery Preview -->
+                <div class="bg-surface-container-lowest p-10 rounded-[2.5rem] shadow-[0px_10px_40px_rgba(25,28,30,0.04)]">
+                    <div class="flex justify-between items-center mb-10">
+                        <h2 class="text-2xl font-bold font-manrope">Galeria de Mídia</h2>
+                        <a id="gallery-link" href="#" class="text-primary text-xs font-bold flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">photo_library</span> Ver Tudo
+                        </a>
+                    </div>
+                    <div id="gallery-preview" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <!-- Preview photos -->
+                    </div>
+                    <div id="gallery-empty-preview" class="hidden text-center py-8">
+                        <p class="text-sm text-secondary/30 italic">Nenhuma mídia capturada ainda.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Actions & Guests Snapshot -->
+            <div class="lg:col-span-4 space-y-12">
+                <!-- Guests Widget -->
+                <div class="bg-surface-container-lowest p-10 rounded-[2.5rem] shadow-[0px_10px_40px_rgba(25,28,30,0.04)]">
+                    <h2 class="text-Headline-SM font-manrope font-bold mb-8">Convidados</h2>
+                    <div id="guests-list" class="space-y-6">
+                        <!-- Guest items dynamic -->
+                        <div class="animate-pulse flex items-center gap-4">
+                            <div class="w-10 h-10 bg-surface-container-highest rounded-full"></div>
+                            <div class="flex-grow space-y-2">
+                                <div class="h-3 bg-surface-container-highest rounded w-1/2"></div>
+                                <div class="h-2 bg-surface-container-highest rounded w-1/4"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <a id="manage-guests-link" href="#" class="mt-8 block text-center py-3 border border-outline-variant/30 text-secondary text-xs font-bold rounded-full hover:bg-primary/5 transition-all">Gerenciar Lista</a>
+                </div>
+
+                <div class="bg-primary-container p-10 rounded-[2.5rem] text-white overflow-hidden relative group">
+                    <div class="relative z-10">
+                        <h3 class="text-xl font-bold font-manrope mb-2">QR Code de Check-in</h3>
+                        <p class="text-white/70 text-[10px] font-medium uppercase tracking-widest mb-6">Acesso Administrativo</p>
+                        <div class="bg-white p-4 rounded-3xl w-fit mx-auto mb-6 transform group-hover:scale-105 transition-transform">
+                            <div id="qrcode-placeholder" class="w-32 h-32 bg-surface flex items-center justify-center text-secondary/20">
+                                <span class="material-symbols-outlined text-5xl text-primary/10">qr_code_2</span>
+                            </div>
+                        </div>
+                        <a id="btn-manage-qr" href="#" class="inline-flex w-full py-3 bg-white text-primary font-bold text-xs rounded-full items-center justify-center hover:shadow-lg transition-all">
+                            Gerenciar / Imprimir
+                        </a>
+                    </div>
+                    <div class="absolute -right-4 -bottom-4 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Add Schedule -->
+    <div id="modal-schedule" class="fixed inset-0 bg-on-surface/40 backdrop-blur-sm z-[100] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl relative animate-fade-in scale-95 transition-transform duration-300">
+            <button id="close-modal-schedule" class="absolute top-6 right-6 text-secondary hover:text-primary">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+            <h2 id="modal-sch-title" class="text-2xl font-bold font-manrope mb-8">Novo Item de Cronograma</h2>
+            <form id="add-schedule-form" class="space-y-6">
+                <div>
+                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-2">Título do Evento</label>
+                    <input type="text" id="sch-title" required placeholder="Ex: Recepção e Coquetel" class="w-full bg-surface-container-highest border-none rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-primary/20">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-2">Descrição (Opcional)</label>
+                    <textarea id="sch-desc" rows="3" class="w-full bg-surface-container-highest border-none rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-primary/20"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-2">Horário</label>
+                    <input type="datetime-local" id="sch-date" required class="w-full bg-surface-container-highest border-none rounded-2xl px-6 py-4 text-sm font-semibold focus:ring-2 focus:ring-primary/20">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-2">Foto (Opcional)</label>
+                    <div class="flex items-center gap-4">
+                        <div id="sch-photo-preview" class="w-20 h-20 rounded-2xl bg-surface-container-highest overflow-hidden flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-secondary/20">image</span>
+                        </div>
+                        <input type="file" id="sch-photo" accept="image/*" class="text-xs text-secondary file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 pt-4">
+                    <button type="button" id="cancel-sch" class="flex-grow py-4 border border-outline-variant/30 font-bold text-xs rounded-full">Cancelar</button>
+                    <button id="submit-sch-btn" type="submit" class="flex-grow py-4 bg-primary text-white font-bold text-xs rounded-full">Salvar Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Confirm Delete (Schedule) -->
+    <div id="modal-confirm" class="fixed inset-0 bg-on-surface/40 backdrop-blur-sm z-[110] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl relative animate-fade-in text-center">
+            <div class="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="material-symbols-outlined text-3xl">delete_forever</span>
+            </div>
+            <h2 class="text-2xl font-bold font-manrope mb-2">Remover do Cronograma</h2>
+            <p class="text-secondary text-sm mb-8">Tem certeza que deseja remover este item? Esta ação não pode ser desfeita.</p>
+            <div class="flex items-center gap-3">
+                <button id="confirm-cancel" class="flex-1 py-4 border border-outline-variant/30 font-bold text-xs rounded-full hover:bg-surface-container-low transition-colors">Cancelar</button>
+                <button id="confirm-ok" class="flex-1 py-4 bg-red-600 text-white font-bold text-xs rounded-full hover:bg-red-700 shadow-lg shadow-red-600/20 active:scale-95 transition-all">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <!-- Lightbox Modal -->
+    <div id="modal-preview" class="fixed inset-0 z-[100] flex items-center justify-center hidden opacity-0 transition-all duration-300">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-xl" id="close-preview-bg"></div>
+        <div class="relative max-w-[90vw] max-h-[90vh] z-10 scale-95 transition-transform duration-300 overflow-hidden rounded-3xl shadow-2xl border border-white/10">
+            <button id="close-preview" class="absolute top-6 right-6 w-12 h-12 bg-white text-black hover:bg-white/90 shadow-xl rounded-full flex items-center justify-center transition-all z-20 hover:scale-110 active:scale-90 group">
+                <span class="material-symbols-outlined font-bold group-hover:rotate-90 transition-transform duration-300">close</span>
+            </button>
+            <img id="preview-img" src="" class="max-w-full max-h-[90vh] object-contain hidden">
+            <video id="preview-video" controls class="max-w-full max-h-[90vh] rounded-xl hidden"></video>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script src="/js/event-details.js"></script>
+</body>
+</html>

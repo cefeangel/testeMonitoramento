@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html class="light" lang="pt-br">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Memory Docs - Dashboard de Eventos</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" />
+    <link rel="stylesheet" href="/css/style.css">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "var(--primary)",
+                        secondary: "var(--secondary)",
+                        surface: "var(--surface)",
+                        "on-surface": "var(--on-surface)",
+                        "surface-container-low": "var(--surface-container-low)",
+                        "surface-container-lowest": "var(--surface-container-lowest)",
+                        "surface-container-highest": "var(--surface-container-highest)",
+                        "primary-container": "var(--primary-container)",
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface">
+    <!-- Top Navigation Bar -->
+    <header class="bg-surface/80 backdrop-blur-md sticky top-0 z-50 border-b border-outline-variant/10">
+        <div class="flex justify-between items-center w-full px-8 h-20 max-w-[1440px] mx-auto">
+            <div class="text-2xl font-bold tracking-tighter text-primary brand-font">Memory Docs</div>
+            
+            <nav class="hidden md:flex items-center space-x-8 font-manrope text-sm font-semibold tracking-tight">
+            </nav>
+
+            <div class="flex items-center gap-6">
+                <!-- Dark Mode Toggle -->
+                <button id="dark-mode-toggle" class="w-10 h-10 rounded-full flex items-center justify-center text-secondary hover:bg-surface-container-highest transition-all active:scale-90" title="Alternar Tema">
+                    <span class="material-symbols-outlined dark:hidden">dark_mode</span>
+                    <span class="material-symbols-outlined hidden dark:block">light_mode</span>
+                </button>
+
+                <button id="logout-btn" class="text-secondary hover:text-primary transition-all active:scale-95 flex items-center gap-2">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span class="hidden lg:block text-xs font-bold uppercase tracking-widest">Sair</span>
+                </button>
+                <div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/10">
+                    <div id="user-avatar" class="w-full h-full bg-primary-container flex items-center justify-center text-white font-bold">
+                        A
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-[1440px] mx-auto px-8 py-10 flex gap-8">
+        <!-- Sidebar Shell -->
+        <aside class="hidden lg:flex flex-col h-[calc(100vh-120px)] sticky top-24 py-8 px-4 bg-surface-container-low w-64 rounded-r-[2rem]">
+            <div class="flex flex-col gap-2 flex-grow">
+                <a href="/dashboard.html" class="flex items-center gap-4 px-4 py-3 bg-surface-container-lowest text-primary rounded-full shadow-sm">
+                    <span class="material-symbols-outlined">event</span>
+                    <span class="font-manrope text-sm font-medium">Eventos</span>
+                </a>
+                <a href="/guests-all.html" class="flex items-center gap-4 px-4 py-3 text-secondary hover:bg-surface-container-highest/50 transition-all rounded-full">
+                    <span class="material-symbols-outlined">group</span>
+                    <span class="font-manrope text-sm font-medium">Convidados</span>
+                </a>
+                <a href="/reports.html" class="flex items-center gap-4 px-4 py-3 text-secondary hover:bg-surface-container-highest/50 transition-all rounded-full">
+                    <span class="material-symbols-outlined">assessment</span>
+                    <span class="font-manrope text-sm font-medium">Relatórios</span>
+                </a>
+                <a href="/settings.html" class="flex items-center gap-4 px-4 py-3 text-secondary hover:bg-surface-container-highest/50 transition-all rounded-full">
+                    <span class="material-symbols-outlined">settings</span>
+                    <span class="font-manrope text-sm font-medium">Configurações</span>
+                </a>
+            
+        </aside>
+
+        <!-- Dashboard Canvas -->
+        <div class="flex-grow space-y-10">
+            <!-- Header Section -->
+            <div class="flex justify-between items-end animate-fade-in">
+                <div>
+                    <h1 class="text-3xl font-bold font-manrope text-on-surface mb-1">Seus Eventos</h1>
+                    <p class="text-secondary text-sm">Gerencie sua curadoria de experiências.</p>
+                </div>
+                <a id="create-event-btn" href="/create-event.html" class="bg-primary text-white px-6 py-3 rounded-full font-bold text-sm hover:shadow-lg transition-all active:scale-95 flex items-center gap-2">
+                    <span class="material-symbols-outlined">add</span>
+                    Novo Evento
+                </a>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="flex flex-col items-center justify-center py-20 opacity-40">
+                <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p class="text-sm font-manrope font-semibold">Carregando seus eventos...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden flex flex-col items-center justify-center py-20 animate-fade-in">
+                <span class="material-symbols-outlined text-6xl text-secondary/20 mb-6">calendar_month</span>
+                <p class="text-lg font-manrope font-bold text-secondary mb-2">Nenhum evento encontrado</p>
+                <p class="text-sm text-secondary/60 mb-8">Comece criando seu primeiro evento editorial.</p>
+            </div>
+
+            <!-- Event Grid -->
+            <div id="event-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 pb-10">
+                <!-- Cards will be injected here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile Navigation -->
+    <footer class="md:hidden fixed bottom-0 left-0 right-0 bg-surface-container-lowest border-t border-outline-variant/10 px-6 py-3 z-50">
+        <div class="flex justify-between items-center text-secondary">
+            <button class="flex flex-col items-center gap-1 text-primary">
+                <span class="material-symbols-outlined">event</span>
+                <span class="text-[10px] font-bold">Eventos</span>
+            </button>
+            <button class="flex flex-col items-center gap-1">
+                <span class="material-symbols-outlined">group</span>
+                <span class="text-[10px] font-medium">Convidados</span>
+            </button>
+            <button class="flex flex-col items-center gap-1">
+                <span class="material-symbols-outlined">logout</span>
+                <span class="text-[10px] font-medium">Sair</span>
+            </button>
+        </div>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/common.js"></script>
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>

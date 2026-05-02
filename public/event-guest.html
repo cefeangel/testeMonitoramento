@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Memory Docs - Bem-vindo ao Evento</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "var(--primary)",
+                        secondary: "var(--secondary)",
+                        surface: "var(--surface)",
+                        "on-surface": "var(--on-surface)",
+                        "surface-container-low": "var(--surface-container-low)",
+                        "surface-container-lowest": "var(--surface-container-lowest)",
+                        "surface-container-highest": "var(--surface-container-highest)",
+                        "primary-container": "var(--primary-container)",
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'scroll-hint': 'scrollHint 2s ease-in-out infinite'
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        },
+                        scrollHint: {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '50%': { transform: 'translateX(10px)' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)' },
+                            '100%': { transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Detecção e aplicação de Modo Escuro
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+    <style>
+        .animate-slide-up {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .snap-x-mandatory {
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .snap-center {
+            scroll-snap-align: center;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .bg-glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Previne o movimento indesejado do fundo no mobile */
+        body {
+            overscroll-behavior-y: none;
+        }
+
+        .fixed {
+            touch-action: none;
+        }
+
+        /* Garante que o conteúdo interno dos modais ainda possa rolar se necessário */
+        #modal-info,
+        #modal-upload-preview,
+        #modal-welcome {
+            touch-action: auto;
+        }
+    </style>
+</head>
+
+<body class="bg-surface text-on-surface font-manrope selection:bg-primary/20">
+
+    <!-- Hero Section with Background Image -->
+    <div class="relative h-[45vh] w-full overflow-hidden">
+        <div id="event-hero-bg" class="absolute inset-0 bg-secondary/80 transition-all duration-1000 scale-110">
+            <!-- Background Image will be set via JS -->
+            <div class="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-surface z-10"></div>
+        </div>
+
+        <div class="relative z-20 h-full flex flex-col items-center justify-end pb-20 px-6 text-center text-white">
+            <div id="guest-header-info" class="animate-fade-in">
+                <h1 id="event-name" class="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 leading-none">
+                    Carregando...</h1>
+                <div id="event-date" class="text-xs font-semibold opacity-60">Aguardando detalhes do evento</div>
+            </div>
+        </div>
+
+    </div>
+    </div>
+
+    <!-- Interface Content -->
+    <main class="relative z-40 -mt-10 px-0 pb-20">
+
+        <!-- Action Buttons (Icons like the screenshot) -->
+        <div class="flex justify-center gap-12 items-center px-8 mb-12 animate-fade-in stagger-1">
+            <button id="btn-upload-trigger" class="flex flex-col items-center gap-2 group">
+                <div
+                    class="w-14 h-14 bg-surface-container-lowest backdrop-blur-md rounded-full shadow-lg flex items-center justify-center text-secondary group-active:scale-95 transition-all outline outline-0 outline-secondary/10 hover:outline-4">
+                    <span class="material-symbols-outlined text-2xl">add_a_photo</span>
+                </div>
+                <span class="text-[10px] font-bold text-secondary uppercase tracking-widest">Subir Foto/Vídeo</span>
+            </button>
+
+            <a id="link-full-schedule" href="#" class="flex flex-col items-center gap-2 group">
+                <div
+                    class="w-14 h-14 bg-surface-container-lowest rounded-full shadow-lg flex items-center justify-center text-secondary group-active:scale-95 transition-all">
+                    <span class="material-symbols-outlined text-2xl">event_note</span>
+                </div>
+                <span class="text-[10px] font-bold text-secondary uppercase tracking-widest">Agenda</span>
+            </a>
+        </div>
+
+
+
+        <!-- Gallery Section -->
+        <div class="px-8 mb-12">
+            <div class="flex items-center justify-between mb-8">
+                <h2 class="text-xl font-bold tracking-tight">Fotos Recentes</h2>
+                <button id="btn-view-gallery"
+                    class="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest backdrop-blur-md rounded-full border border-secondary/10 text-secondary shadow-lg active:scale-95 transition-all group">
+                    <span class="material-symbols-outlined text-lg">photo_library</span>
+                    <span class="text-[10px] font-bold uppercase tracking-widest">Ver Fotos</span>
+                </button>
+            </div>
+
+            <div id="gallery-grid" class="grid grid-cols-2 gap-4">
+                <!-- Gallery photos -->
+            </div>
+
+            <button id="btn-load-more-photos"
+                class="w-full mt-10 py-5 bg-surface-container-lowest backdrop-blur-md rounded-[2.5rem] text-[10px] font-bold uppercase tracking-[0.2em] text-secondary border border-secondary/10 hover:bg-surface-container-low active:scale-[0.98] transition-all shadow-xl">
+                Ver todas as Fotos
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Modal: Photo Full View -->
+    <div id="modal-photo-view"
+        class="fixed inset-0 bg-black/95 backdrop-blur-xl z-[200] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="w-full h-full flex items-center justify-center p-6">
+            <img id="full-photo-img" src=""
+                class="max-w-full max-h-full object-contain rounded-xl shadow-2xl animate-fade-in scale-95 transition-transform duration-300 hidden">
+            <video id="full-video-player" controls
+                class="max-w-full max-h-full rounded-xl shadow-2xl animate-fade-in scale-95 transition-transform duration-300 hidden"></video>
+        </div>
+        <button id="close-photo-view" class="absolute top-14 right-6 text-white w-14 h-14 z-[210] flex items-center justify-center bg-black/40 backdrop-blur-xl border border-white/20 rounded-full active:scale-95 transition-all shadow-2xl">
+            <span class="material-symbols-outlined text-4xl font-bold">close</span>
+        </button>
+    </div>
+
+    <!-- Modal: Welcome / Ask Name -->
+    <div id="modal-welcome"
+        class="fixed inset-0 bg-on-surface/40 backdrop-blur-md z-[100] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div
+            class="bg-surface-container-lowest w-[85%] max-w-sm rounded-[2.5rem] p-10 shadow-2xl relative animate-fade-in scale-95 transition-transform duration-300">
+            <h2 class="text-2xl font-bold font-manrope mb-2">Bem-vindo!</h2>
+            <p class="text-secondary text-sm mb-8">Como você gostaria de ser identificado ao enviar fotos?</p>
+            <input type="text" id="guest-name-input" placeholder="Seu nome (opcional)"
+                class="w-full bg-surface-container-highest border-none rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-primary/20 mb-6">
+            <button id="btn-save-welcome"
+                class="w-full py-4 bg-primary text-white font-bold text-xs rounded-full shadow-lg shadow-primary/20 active:scale-95 transition-all uppercase tracking-widest">Entrar
+                no Evento</button>
+        </div>
+    </div>
+
+    <!-- Modal: Item Detail (Info) -->
+    <div id="modal-info"
+        class="fixed inset-0 bg-on-surface/40 backdrop-blur-md z-[100] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div
+            class="bg-surface-container-lowest w-[90%] max-w-lg max-h-[80vh] overflow-y-auto rounded-[2.5rem] p-10 shadow-2xl relative animate-fade-in scale-95 transition-transform duration-300">
+            <button id="close-modal-info" class="absolute top-6 right-6 text-secondary hover:text-primary">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+            <div id="modal-info-content">
+                <!-- Dynamic Content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Upload Photo -->
+    <!-- Modal: Native Inline Camera (WebRTC) -->
+    <div id="modal-native-camera"
+        class="fixed inset-0 bg-black z-[250] flex flex-col hidden opacity-0 transition-opacity duration-300">
+        <div class="relative flex-1 flex items-center justify-center overflow-hidden bg-black">
+            <video id="camera-stream" autoplay playsinline class="w-full h-full object-cover"></video>
+            <div class="absolute inset-0 pointer-events-none border-[20px] border-black/20"></div>
+            <div class="absolute top-10 left-0 right-0 px-8 flex justify-between items-center z-10">
+                <button id="close-native-camera"
+                    class="w-12 h-12 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-transform">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <button id="switch-camera"
+                    class="w-12 h-12 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-transform">
+                    <span class="material-symbols-outlined">flip_camera_ios</span>
+                </button>
+            </div>
+        </div>
+        <div class="h-40 bg-black flex items-center justify-center px-10">
+            <div class="flex-1"></div>
+            <button id="capture-photo"
+                class="relative w-20 h-20 flex items-center justify-center group active:scale-90 transition-transform">
+                <div class="absolute inset-0 border-4 border-white rounded-full"></div>
+                <div class="w-16 h-16 bg-white rounded-full"></div>
+            </button>
+            <div class="flex-1"></div>
+        </div>
+        <canvas id="camera-canvas" class="hidden"></canvas>
+    </div>
+
+    <!-- Hidden Inputs -->
+    <input type="file" id="photo-upload-input" accept="image/*,video/*" class="hidden">
+    <input type="file" id="camera-upload-input" accept="image/*,video/*" capture="environment" class="hidden">
+
+    <!-- Modal: Choose Upload Source -->
+    <div id="modal-upload-choice"
+        class="fixed inset-0 bg-on-surface/40 backdrop-blur-md z-[150] flex items-end justify-center hidden opacity-0 transition-opacity duration-300">
+        <div
+            class="bg-surface-container-lowest w-full max-w-md rounded-t-[2.5rem] p-8 pb-12 shadow-2xl animate-slide-up">
+            <div class="w-12 h-1.5 bg-secondary/20 rounded-full mx-auto mb-8"></div>
+            <h3 class="text-xl font-bold mb-8 text-center text-secondary">Como deseja enviar sua Memory?</h3>
+            <div class="grid grid-cols-2 gap-6 mb-8">
+                <button id="choice-camera" class="flex flex-col items-center gap-4 group">
+                    <div
+                        class="w-20 h-20 bg-primary/10 text-primary rounded-[2rem] flex items-center justify-center group-active:scale-90 transition-all">
+                        <span class="material-symbols-outlined text-4xl">photo_camera</span>
+                    </div>
+                    <span class="text-xs font-bold uppercase tracking-widest text-secondary/60">Câmera</span>
+                </button>
+                <button id="choice-gallery" class="flex flex-col items-center gap-4 group">
+                    <div
+                        class="w-20 h-20 bg-secondary/10 text-secondary rounded-[2rem] flex items-center justify-center group-active:scale-90 transition-all">
+                        <span class="material-symbols-outlined text-4xl">wallpaper</span>
+                    </div>
+                    <span class="text-xs font-bold uppercase tracking-widest text-secondary/60">Galeria</span>
+                </button>
+            </div>
+            <button id="btn-cancel-choice"
+                class="w-full py-4 text-secondary/40 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Modal: Upload Preview -->
+    <div id="modal-upload-preview"
+        class="fixed inset-0 bg-on-surface/40 backdrop-blur-md z-[160] flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div
+            class="bg-surface-container-lowest w-[90%] max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-fade-in text-center">
+            <h3 class="text-xl font-bold mb-6">Preview da Memory</h3>
+            <div id="upload-media-preview"
+                class="aspect-square w-full rounded-3xl overflow-hidden bg-surface-container-highest mb-8 border border-outline-variant/10 flex items-center justify-center">
+                <img id="upload-img-preview-el" src="" class="w-full h-full object-cover hidden">
+                <video id="upload-video-preview-el" class="w-full h-full object-cover hidden" muted playsinline></video>
+                <div id="upload-generic-preview" class="hidden flex flex-col items-center gap-2 text-secondary">
+                    <span class="material-symbols-outlined text-4xl">draft</span>
+                    <span class="text-[10px] font-bold uppercase tracking-widest">Arquivo Pronto</span>
+                </div>
+            </div>
+            <div class="flex gap-4">
+                <button id="btn-cancel-upload"
+                    class="flex-1 py-4 border border-secondary/20 text-on-surface font-bold text-xs rounded-full active:scale-95 transition-all">Trocar</button>
+                <button id="btn-confirm-upload"
+                    class="flex-1 py-4 bg-primary text-white font-bold text-xs rounded-full shadow-lg shadow-primary/20">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="js/common.js"></script>
+    <script src="/js/event-guest.js"></script>
+</body>
+
+</html>
