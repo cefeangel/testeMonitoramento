@@ -164,20 +164,23 @@ jobs:
           fi
           echo "sourceType detectado: $SOURCETYPE" >> $GITHUB_STEP_SUMMARY
 
-          # Detecta globals definidos em arquivos do projeto (window.X = ...)
+          # Detecta globals do projeto — 3 padrões:
+          # 1. window.X = ...  (ex: window.showToast = function)
+          # 2. const X = { ... (ex: const api = { ... }) em arquivos public/js ou js/
+          # 3. var X = / let X = no escopo global (primeira coluna)
           GLOBALS_JSON="{}"
-          if [ "$SOURCETYPE" = "commonjs" ]; then
-            # Para CommonJS, detecta globals via window.X = ou var X =
-            RAW=$(grep -rh --include="*.js" -oP "(?<=window\.)[a-zA-Z_][a-zA-Z0-9_]*(?=\s*=)" . \
-              --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist 2>/dev/null | \
-              sort -u | head -50)
-          else
-            # Para ES Modules, detecta exports e window.X
-            RAW=$(grep -rh --include="*.js" -oP "(?<=window\.)[a-zA-Z_][a-zA-Z0-9_]*(?=\s*=)" . \
-              --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist 2>/dev/null | \
-              sort -u | head -50)
-          fi
-          # Monta o objeto globals dinamicamente
+
+          RAW_WINDOW=$(grep -rh --include="*.js" -oP "(?<=window\.)[a-zA-Z_][a-zA-Z0-9_]*(?=\s*=)" . \
+            --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist 2>/dev/null | sort -u)
+
+          RAW_CONST=$(grep -rh --include="*.js" -oP "^(?:const|var|let)\s+\K[a-zA-Z_][a-zA-Z0-9_]*(?=\s*=\s*[{\["'`(])" . \
+            --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist \
+            --exclude-dir=src --exclude-dir=routes --exclude-dir=controllers \
+            --exclude-dir=models --exclude-dir=middlewares --exclude-dir=services \
+            2>/dev/null | sort -u | head -30)
+
+          RAW=$(printf "%s\n%s" "$RAW_WINDOW" "$RAW_CONST" | grep -v "^$" | sort -u | head -80)
+
           if [ -n "$RAW" ]; then
             GLOBALS_JSON=$(echo "$RAW" | jq -Rn '[inputs] | map({(.): "readonly"}) | add // {}')
           fi
