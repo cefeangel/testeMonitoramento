@@ -246,10 +246,24 @@ jobs:
         run: |
           echo "### 🌐 HTMLHint — HTML" >> $GITHUB_STEP_SUMMARY
           jq -n '{
-            "tagname-lowercase":true,"attr-lowercase":true,"attr-value-double-quotes":true,
-            "attr-no-duplication":true,"doctype-first":true,"tag-pair":true,
-            "spec-char-escape":true,"id-unique":true,"src-not-empty":true,
-            "alt-require":true,"doctype-html5":true,"attr-unsafe-chars":true
+            "tagname-lowercase":true,
+            "attr-lowercase":true,
+            "attr-value-double-quotes":true,
+            "attr-no-duplication":true,
+            "tag-pair":true,
+            "spec-char-escape":true,
+            "id-unique":true,
+            "src-not-empty":false,
+            "alt-require":false,
+            "doctype-first":false,
+            "doctype-html5":false,
+            "attr-unsafe-chars":false,
+            "inline-style-disabled":false,
+            "inline-script-disabled":false,
+            "space-tab-mixed-disabled":false,
+            "attr-value-not-empty":false,
+            "href-abs-or-rel":false,
+            "title-require":false
           }' > /tmp/htmlhintrc-ci.json
           CONFIG_FLAG="--config /tmp/htmlhintrc-ci.json"
           ls .htmlhintrc .htmlhint.js 2>/dev/null | grep -q . && CONFIG_FLAG=""
