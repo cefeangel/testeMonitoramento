@@ -1,0 +1,928 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API Eventos",
+    "version": "1.0.0",
+    "description": "Documentação interativa da API de Gerenciamento de Eventos (Eventos, Cronogramas, Convidados, Presença e Fotos)."
+  },
+  "servers": [
+    {
+      "url": "{baseUrl}/api",
+      "description": "Servidor Atual",
+      "variables": {
+        "baseUrl": {
+          "default": "http://localhost:8752"
+        }
+      }
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" }
+        }
+      },
+      "AuthData": {
+        "type": "object",
+        "properties": {
+          "accessToken": { "type": "string" },
+          "admin": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "nome": { "type": "string" },
+              "email": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "nome": { "type": "string" },
+          "descricao": { "type": "string" },
+          "data_hora": { "type": "string", "format": "date-time" },
+          "capacidade_total": { "type": "integer" },
+          "max_dependentes_por_convidado": { "type": "integer" }
+        }
+      },
+      "Guest": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "nome_completo": { "type": "string" },
+          "telefone": { "type": "string" }
+        }
+      },
+      "ScheduleItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "titulo": { "type": "string" },
+          "descricao": { "type": "string" },
+          "data_hora": { "type": "string", "format": "date-time" },
+          "foto_url": { "type": "string", "nullable": true }
+        }
+      },
+      "PaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "type": "object" } },
+          "totalItems": { "type": "integer" },
+          "totalPages": { "type": "integer" },
+          "currentPage": { "type": "integer" },
+          "limit": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Registrar Administrador",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome": { "type": "string" },
+                  "email": { "type": "string", "format": "email" },
+                  "senha": { "type": "string", "minLength": 6 }
+                },
+                "required": ["nome", "email", "senha"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { 
+            "description": "Admin criado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "type": "object", "properties": { "id": { "type": "integer" }, "nome": { "type": "string" }, "email": { "type": "string" } } } } }
+                  ]
+                }
+              }
+            }
+          },
+          "400": { "description": "Erros de validação / Email já em uso" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Login Administrador",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "senha": { "type": "string" }
+                },
+                "required": ["email", "senha"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { 
+            "description": "Login realizado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/AuthData" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "Credenciais Inválidas" }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "Listar Eventos",
+        "tags": ["Events"],
+        "parameters": [
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 }, "description": "Número da página" },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 }, "description": "Itens por página" }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista de eventos paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar Evento",
+        "tags": ["Events"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome": { "type": "string" },
+                  "descricao": { "type": "string" },
+                  "data_hora": { "type": "string", "format": "date-time" },
+                  "capacidade_total": { "type": "integer" },
+                  "max_dependentes_por_convidado": { "type": "integer" }
+                },
+                "required": ["nome", "data_hora", "capacidade_total"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { 
+            "description": "Evento criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Event" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "summary": "Obter Evento",
+        "tags": ["Events"],
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Dados do evento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Event" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar Evento",
+        "tags": ["Events"],
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome": { "type": "string" },
+                  "descricao": { "type": "string" },
+                  "data_hora": { "type": "string", "format": "date-time" },
+                  "capacidade_total": { "type": "integer" },
+                  "max_dependentes_por_convidado": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { 
+            "description": "Evento atualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Event" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletar Evento",
+        "tags": ["Events"],
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Evento excluído" }
+        }
+      }
+    },
+    "/events/{eventId}/schedule": {
+      "get": {
+        "summary": "Listar Itens do Cronograma",
+        "tags": ["Schedule"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista de cronograma paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ScheduleItem" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Criar item de Cronograma",
+        "tags": ["Schedule"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "titulo": { "type": "string" },
+                  "descricao": { "type": "string" },
+                  "data_hora": { "type": "string", "format": "date-time" }
+                },
+                "required": ["titulo", "data_hora"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { 
+            "description": "Schedule Item criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ScheduleItem" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}/schedule/{id}": {
+      "get": {
+        "summary": "Obter Item do Cronograma",
+        "tags": ["Schedule"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Dados do item",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ScheduleItem" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar Item do Cronograma",
+        "tags": ["Schedule"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "titulo": { "type": "string" },
+                  "descricao": { "type": "string" },
+                  "data_hora": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { 
+            "description": "Item atualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/ScheduleItem" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deletar Item do Cronograma",
+        "tags": ["Schedule"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Item excluído" }
+        }
+      }
+    },
+    "/events/{eventId}/gallery/photos": {
+      "post": {
+        "summary": "Upload de Foto para a Galeria do Evento",
+        "tags": ["Gallery"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "foto": { "type": "string", "format": "binary" },
+                  "enviado_por": { "type": "string" }
+                },
+                "required": ["foto", "enviado_por"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Foto enviada com sucesso" }
+        }
+      }
+    },
+    "/events/{eventId}/guests": {
+      "get": {
+        "summary": "Listar Convidados",
+        "tags": ["Guests"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista de convidados paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Guest" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Adicionar Convidado Principal",
+        "tags": ["Guests"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome_completo": { "type": "string" },
+                  "telefone": { "type": "string", "example": "+55 (11) 99999-9999" }
+                },
+                "required": ["nome_completo", "telefone"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { 
+            "description": "Convidado criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Guest" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}/guests/{id}": {
+      "get": {
+        "summary": "Obter Convidado",
+        "tags": ["Guests"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Dados do convidado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Guest" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Atualizar Convidado",
+        "tags": ["Guests"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome_completo": { "type": "string" },
+                  "telefone": { "type": "string", "example": "+55 (11) 99999-9999" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Convidado atualizado" }
+        }
+      },
+      "delete": {
+        "summary": "Deletar Convidado",
+        "tags": ["Guests"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Convidado excluído" }
+        }
+      }
+    },
+    "/events/{eventId}/guests/{guestId}/companions": {
+      "get": {
+        "summary": "Listar Acompanhantes de um Convidado",
+        "tags": ["Companions"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "guestId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista de acompanhantes paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Adicionar Acompanhante a um Convidado",
+        "tags": ["Companions"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "guestId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome_completo": { "type": "string" }
+                },
+                "required": ["nome_completo"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Acompanhante adicionado" }
+        }
+      }
+    },
+    "/events/{eventId}/guests/{guestId}/companions/{id}": {
+      "delete": {
+        "summary": "Deletar Acompanhante",
+        "tags": ["Companions"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "guestId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Acompanhante excluído" }
+        }
+      }
+    },
+    "/events/{eventId}/guests/{guestId}/confirm": {
+      "post": {
+        "summary": "Confirmar/Atualizar Presença do Convidado",
+        "tags": ["Confirmations"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "guestId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["PENDENTE", "CONFIRMADO", "CANCELADO"] }
+                },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Presença confirmada" }
+        }
+      },
+      "delete": {
+        "summary": "Cancelar Confirmação de Presença",
+        "tags": ["Confirmations"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "guestId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Confirmação cancelada" }
+        }
+      }
+    },
+    "/events/{eventId}/confirmations/all": {
+      "get": {
+        "summary": "Listar Relatório de Todas as Confirmações do Evento",
+        "tags": ["Confirmations"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista unificada paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}/qrcode": {
+      "get": {
+        "summary": "Obter QRCode do Evento",
+        "tags": ["QRCode"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Dados do QRCode" }
+        }
+      },
+      "post": {
+        "summary": "Gerar QR Code público para Convidados",
+        "tags": ["QRCode"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["expires_at"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "QRCode gerado e persistido." }
+        }
+      }
+    },
+    "/events/{eventId}/qrcode/download": {
+      "get": {
+        "summary": "Download do QRCode",
+        "tags": ["QRCode"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Download da imagem" }
+        }
+      }
+    },
+    "/events/{eventId}/gallery": {
+      "get": {
+        "summary": "Listar Fotos da Galeria do Evento",
+        "tags": ["Gallery"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Galeria paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                      "type": "object", 
+                      "properties": { 
+                        "data": { 
+                          "allOf": [
+                            { "$ref": "#/components/schemas/PaginatedResponse" },
+                            { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object" } } } }
+                          ]
+                        } 
+                      } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}/schedule/{scheduleId}/photos": {
+      "get": {
+        "summary": "Listar Fotos de um Item do Cronograma",
+        "tags": ["Gallery"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "scheduleId", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { 
+            "description": "Lista de fotos paginada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ApiResponse" },
+                    { 
+                       "type": "object", 
+                       "properties": { 
+                         "data": { 
+                           "allOf": [
+                             { "$ref": "#/components/schemas/PaginatedResponse" },
+                             { "type": "object", "properties": { "items": { "type": "array", "items": { "type": "object" } } } }
+                           ]
+                         } 
+                       } 
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload de Foto para Cronograma (Galeria)",
+        "tags": ["Gallery"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "scheduleId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "foto": { "type": "string", "format": "binary" },
+                  "enviado_por": { "type": "string" }
+                },
+                "required": ["foto", "enviado_por"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Foto enviada" }
+        }
+      }
+    },
+    "/events/{eventId}/photos/{photoId}": {
+      "delete": {
+        "summary": "Deletar Foto da Galeria",
+        "tags": ["Gallery"],
+        "parameters": [
+          { "in": "path", "name": "eventId", "required": true, "schema": { "type": "integer" } },
+          { "in": "path", "name": "photoId", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Foto excluída" }
+        }
+      }
+    }
+  }
+}
