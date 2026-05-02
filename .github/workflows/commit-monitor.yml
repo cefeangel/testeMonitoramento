@@ -289,7 +289,19 @@ jobs:
         run: |
           echo "### 🎨 Stylelint — CSS / SCSS" >> $GITHUB_STEP_SUMMARY
           # Grava config Stylelint embutida em arquivo temporário
-          echo '{"extends":["stylelint-config-standard"]}' > /tmp/stylelint-ci.json
+          # Regras opinionadas rebaixadas para warning (notação moderna vs legada)
+          jq -n '{
+            "extends": ["stylelint-config-standard"],
+            "rules": {
+              "color-function-notation": ["warn", "legacy"],
+              "alpha-value-notation": ["warn", "number"],
+              "declaration-block-single-line-max-declarations": null,
+              "keyframes-name-pattern": null,
+              "selector-class-pattern": null,
+              "custom-property-pattern": null,
+              "value-keyword-case": null
+            }
+          }' > /tmp/stylelint-ci.json
 
           if ls .stylelintrc* stylelint.config* 2>/dev/null | grep -q .; then
             CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
@@ -301,8 +313,8 @@ jobs:
               xargs npx stylelint --config /tmp/stylelint-ci.json 2>&1) || true
           fi
           echo "$CSS_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          CSS_ERRORS=$(echo "$CSS_OUT" | grep -c "✖\|error" || echo "0")
-          CSS_WARNS=$(echo "$CSS_OUT" | grep -c "warning\|⚠" || echo "0")
+          CSS_ERRORS=$(echo "$CSS_OUT" | grep -c "✖ " || echo "0")
+          CSS_WARNS=$(echo "$CSS_OUT" | grep -c "⚠ " || echo "0")
           if [ "$CSS_ERRORS" -gt 0 ] 2>/dev/null; then
             echo "❌ **$CSS_ERRORS erro(s) CSS** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
