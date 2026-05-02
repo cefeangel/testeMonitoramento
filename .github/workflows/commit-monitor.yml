@@ -271,14 +271,15 @@ jobs:
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
             xargs htmlhint $CONFIG_FLAG 2>&1) || true
 
-          # Remove códigos ANSI via Python (mais robusto que sed para escape sequences)
-          HTML_CLEAN=$(echo "$HTML_OUT" | python3 -c "
+          # Remove códigos ANSI — grava script Python em arquivo para evitar conflito de aspas no YAML
+          cat > /tmp/strip_ansi.py << 'PYEOF'
 import sys, re
 data = sys.stdin.read()
 clean = re.sub(r'\x1b\[[0-9;]*[mGKHF]', '', data)
 clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', clean)
 print(clean, end='')
-")
+PYEOF
+          HTML_CLEAN=$(echo "$HTML_OUT" | python3 /tmp/strip_ansi.py)
 
           # Extrai apenas as linhas de erro reais (contêm número de linha e regra)
           HTML_ERROR_LINES=$(echo "$HTML_CLEAN" | grep -E "L[0-9]+ \|" | grep -E "\([a-z-]+\)")
