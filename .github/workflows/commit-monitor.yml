@@ -274,10 +274,10 @@ jobs:
           # Remove ANSI e processa saída do HTMLHint com --format unix para output limpo
           HTML_CLEAN=$(printf '%s' "$HTML_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
 
-          # Conta erros reais: linhas com padrão "arquivo:linha:col: msg (regra)"
-          # HTMLHint com --format unix produz: arquivo:linha:col: mensagem (regra)
-          HTML_ERRORS=$(echo "$HTML_CLEAN" | grep -cE "\([a-z-]+\)" || echo "0")
-          [ "$(echo "$HTML_CLEAN" | grep -cE '\([a-z-]+\)')" = "0" ] && HTML_ERRORS=0
+          # HTMLHint --format unix produz: arquivo:linha:col: mensagem [error/regra]
+          # Conta linhas com o padrão [error/...] ou [warning/...]
+          HTML_ERRORS=$(echo "$HTML_CLEAN" | grep -cE "\[(error|warning)/[a-z-]+\]" || echo "0")
+          [ "$(echo "$HTML_CLEAN" | grep -cE '\[(error|warning)/[a-z-]+\]')" = "0" ] && HTML_ERRORS=0
 
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
@@ -285,19 +285,18 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Arquivo | Linha | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|-------|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            CURRENT_FILE=""
+            # Usa sed para extrair os 4 campos via regex robusto
+            # Formato: PATH:LINHA:COL: MENSAGEM [error/REGRA]
+            echo "$HTML_CLEAN" | grep -E "\.html?:[0-9]+:[0-9]+:.*\[(error|warning)/[a-z-]+\]" | \
             while IFS= read -r rawline; do
-              # Formato unix: ./path/file.html:linha:col: mensagem (regra)
-              if echo "$rawline" | grep -qE "\.html?:[0-9]+:[0-9]+:.*\([a-z-]+\)"; then
-                FILE_PATH=$(echo "$rawline" | cut -d: -f1)
-                CURRENT_FILE=$(basename "$FILE_PATH")
-                LINE_NUM=$(echo "$rawline" | cut -d: -f2)
-                REST=$(echo "$rawline" | cut -d: -f4-)
-                RULE=$(echo "$REST" | grep -oE "\([a-z-]+\)$" | tr -d '()')
-                MSG=$(echo "$REST" | sed 's/ *([a-z-]*)$//' | sed 's/^ *//' | cut -c1-55)
-                echo "| \`${CURRENT_FILE}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
-              fi
-            done <<< "$HTML_CLEAN"
+              # Extrai com sed: arquivo, linha, mensagem, regra (em variáveis separadas)
+              FILE_PATH=$(echo "$rawline" | sed -E 's/^(.*\.html?):[0-9]+:[0-9]+:.*$/\1/')
+              CURRENT_FILE=$(basename "$FILE_PATH")
+              LINE_NUM=$(echo "$rawline" | sed -E 's/^.*\.html?:([0-9]+):[0-9]+:.*$/\1/')
+              RULE=$(echo "$rawline" | sed -E 's/^.*\[(error|warning)\/([a-z-]+)\]$/\2/')
+              MSG=$(echo "$rawline" | sed -E 's/^.*\.html?:[0-9]+:[0-9]+: *(.*) \[(error|warning)\/[a-z-]+\]$/\1/' | tr -d '|' | cut -c1-60)
+              echo "| \`${CURRENT_FILE}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+            done
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
             echo "✅ HTML sem erros estruturais" >> $GITHUB_STEP_SUMMARY
