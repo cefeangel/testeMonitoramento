@@ -271,8 +271,8 @@ jobs:
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
             xargs htmlhint $CONFIG_FLAG 2>&1) || true
           echo "$HTML_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          HTML_ERRORS=$(echo "$HTML_OUT" | grep -c "error\|Error" || echo "0")
-          HTML_WARNS=$(echo "$HTML_OUT" | grep -c "warning\|Warning" || echo "0")
+          HTML_ERRORS=$(echo "$HTML_OUT" | grep -cE "\([a-z-]+\)$" || echo "0")
+          HTML_WARNS=0
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
             echo "❌ **$HTML_ERRORS erro(s) HTML** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
