@@ -270,17 +270,37 @@ jobs:
           HTML_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" -not -path "*/vendor/*" \
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
             xargs htmlhint $CONFIG_FLAG 2>&1) || true
-          echo "$HTML_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          HTML_ERRORS=$(echo "$HTML_OUT" | grep -cE "\([a-z-]+\)$" || echo "0")
-          HTML_WARNS=0
+
+          # Remove códigos ANSI para leitura limpa
+          HTML_CLEAN=$(echo "$HTML_OUT" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\o033\[[0-9;]*m//g' | cat -v | sed 's/M-oM-^\M-^[\[[0-9;]*m//g; s/\^\[\[[0-9;]*m//g')
+
+          # Extrai apenas as linhas de erro reais (contêm número de linha e regra)
+          HTML_ERROR_LINES=$(echo "$HTML_CLEAN" | grep -E "L[0-9]+ \|" | grep -E "\([a-z-]+\)")
+          HTML_ERRORS=$(echo "$HTML_ERROR_LINES" | grep -c "." || echo "0")
+          [ -z "$HTML_ERROR_LINES" ] && HTML_ERRORS=0
+
+          # Monta relatório legível no Summary
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$HTML_ERRORS erro(s) HTML** encontrado(s)" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **$HTML_ERRORS problema(s) de estrutura HTML encontrado(s)**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Arquivo | Linha | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            # Processa cada arquivo com erro
+            CURRENT_FILE=""
+            while IFS= read -r line; do
+              if echo "$line" | grep -qE "^/.+\.html?$"; then
+                CURRENT_FILE=$(echo "$line" | sed 's|.*/||')
+              elif echo "$line" | grep -qE "L[0-9]+ \|" && echo "$line" | grep -qE "\([a-z-]+\)"; then
+                LINE_NUM=$(echo "$line" | grep -oE "L[0-9]+" | head -1 | tr -d 'L')
+                RULE=$(echo "$line" | grep -oE "\([a-z-]+\)" | tr -d '()')
+                MSG=$(echo "$line" | sed 's/.*| //' | sed 's/ ([a-z-]*)//' | cut -c1-60)
+                echo "| \`$CURRENT_FILE\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done <<< "$HTML_CLEAN"
             echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$HTML_WARNS" -gt 0 ] 2>/dev/null; then
-            echo "⚠️ **$HTML_WARNS aviso(s) HTML** encontrado(s)" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_warning=true" >> $GITHUB_ENV
           else
-            echo "✅ HTML sem erros" >> $GITHUB_STEP_SUMMARY
+            echo "✅ HTML sem erros estruturais" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Stylelint — CSS / SCSS (regras embutidas)
