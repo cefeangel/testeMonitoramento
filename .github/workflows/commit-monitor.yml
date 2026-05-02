@@ -156,9 +156,17 @@ jobs:
           npm install -g eslint@8 2>/dev/null || true
 
           # Gera config embutida via jq (sem heredoc nem python multiline)
-          jq -n '{
+          # Detecta automaticamente se o projeto usa ES Modules (import/export) ou CommonJS (require)
+          SOURCETYPE="commonjs"
+          if [ -f "package.json" ]; then
+            PKG_TYPE=$(node -e "try{const p=require('./package.json');console.log(p.type||'')}catch(e){}" 2>/dev/null || echo "")
+            [ "$PKG_TYPE" = "module" ] && SOURCETYPE="module"
+          fi
+          echo "sourceType detectado: $SOURCETYPE" >> $GITHUB_STEP_SUMMARY
+
+          jq -n --arg st "$SOURCETYPE" '{
             env: {node:true, browser:true, es2022:true, commonjs:true},
-            parserOptions: {ecmaVersion:2022},
+            parserOptions: {ecmaVersion:2022, sourceType:$st},
             rules: {
               "no-undef": "error",
               "no-unused-vars": "warn",
