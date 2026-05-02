@@ -283,19 +283,66 @@ jobs:
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
             echo "⚠️ **$HTML_ERRORS problema(s) de estrutura HTML**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Arquivo | Linha | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|-------|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            # Usa sed para extrair os 4 campos via regex robusto
-            # Formato: PATH:LINHA:COL: MENSAGEM [error/REGRA]
+            echo "| Arquivo | Linha | Tag/Atributo | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|--------------|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "$HTML_CLEAN" | grep -E "\.html?:[0-9]+:[0-9]+:.*\[(error|warning)/[a-z-]+\]" | \
             while IFS= read -r rawline; do
-              # Extrai com sed: arquivo, linha, mensagem, regra (em variáveis separadas)
               FILE_PATH=$(echo "$rawline" | sed -E 's/^(.*\.html?):[0-9]+:[0-9]+:.*$/\1/')
               CURRENT_FILE=$(basename "$FILE_PATH")
               LINE_NUM=$(echo "$rawline" | sed -E 's/^.*\.html?:([0-9]+):[0-9]+:.*$/\1/')
               RULE=$(echo "$rawline" | sed -E 's/^.*\[(error|warning)\/([a-z-]+)\]$/\2/')
-              MSG=$(echo "$rawline" | sed -E 's/^.*\.html?:[0-9]+:[0-9]+: *(.*) \[(error|warning)\/[a-z-]+\]$/\1/' | tr -d '|' | cut -c1-60)
-              echo "| \`${CURRENT_FILE}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+
+              # Extrai a tag/atributo problemático do primeiro [ ... ] da mensagem
+              TAG=$(echo "$rawline" | grep -oE '\[ [^]]+ \]' | head -1 | sed 's/\[ //; s/ \]//')
+              [ -z "$TAG" ] && TAG="—"
+
+              # Traduz a mensagem para português baseado na regra detectada
+              case "$RULE" in
+                tag-pair)
+                  MSG_PT="Tag não foi fechada corretamente"
+                  ;;
+                tagname-lowercase)
+                  MSG_PT="Nome da tag deve estar em minúsculo"
+                  ;;
+                attr-lowercase)
+                  MSG_PT="Nome do atributo deve estar em minúsculo"
+                  ;;
+                attr-value-double-quotes)
+                  MSG_PT="Valor do atributo deve usar aspas duplas"
+                  ;;
+                attr-no-duplication)
+                  MSG_PT="Atributo duplicado na mesma tag"
+                  ;;
+                attr-value-not-empty)
+                  MSG_PT="Atributo não pode ter valor vazio"
+                  ;;
+                spec-char-escape)
+                  MSG_PT="Caractere especial precisa de escape (& < >)"
+                  ;;
+                id-unique)
+                  MSG_PT="ID duplicado — deve ser único na página"
+                  ;;
+                src-not-empty)
+                  MSG_PT="Atributo src não pode estar vazio"
+                  ;;
+                alt-require)
+                  MSG_PT="Imagem precisa do atributo alt"
+                  ;;
+                doctype-first)
+                  MSG_PT="DOCTYPE deve ser a primeira linha do arquivo"
+                  ;;
+                doctype-html5)
+                  MSG_PT="DOCTYPE deve ser <!DOCTYPE html> (HTML5)"
+                  ;;
+                title-require)
+                  MSG_PT="Página precisa de uma tag <title>"
+                  ;;
+                *)
+                  MSG_PT="Problema de estrutura HTML"
+                  ;;
+              esac
+
+              echo "| \`${CURRENT_FILE}\` | $LINE_NUM | \`$TAG\` | $MSG_PT | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
             done
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
