@@ -269,7 +269,7 @@ jobs:
           ls .htmlhintrc .htmlhint.js 2>/dev/null | grep -q . && CONFIG_FLAG=""
           HTML_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" -not -path "*/vendor/*" \
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
-            xargs htmlhint $CONFIG_FLAG 2>&1) || true
+            xargs htmlhint $CONFIG_FLAG --format unix 2>&1) || true
 
           # Remove ANSI e processa saída do HTMLHint com --format unix para output limpo
           HTML_CLEAN=$(printf '%s' "$HTML_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
@@ -287,21 +287,20 @@ jobs:
             echo "|---------|-------|----------|-------|" >> $GITHUB_STEP_SUMMARY
             CURRENT_FILE=""
             while IFS= read -r rawline; do
-              # Detecta linha de arquivo (termina com .html ou .htm, sem espaços antes)
-              if echo "$rawline" | grep -qE "^\S.*\.(html?|htm)$"; then
-                CURRENT_FILE=$(basename "$rawline")
-              # Detecta linha de erro: contém L<num> e termina com (regra)
-              elif echo "$rawline" | grep -qE "L[0-9]+" && echo "$rawline" | grep -qE "\([a-z-]+\)$"; then
-                LINE_NUM=$(echo "$rawline" | grep -oE "L[0-9]+" | head -1 | tr -d 'L')
-                RULE=$(echo "$rawline" | grep -oE "\([a-z-]+\)$" | tr -d '()')
-                MSG=$(echo "$rawline" | sed 's/.*| //' | sed 's/ *([a-z-]*)$//' | cut -c1-55 | sed 's/|//g')
-                echo "| \`${CURRENT_FILE:-?}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+              # Formato unix: ./path/file.html:linha:col: mensagem (regra)
+              if echo "$rawline" | grep -qE "\.html?:[0-9]+:[0-9]+:.*\([a-z-]+\)"; then
+                FILE_PATH=$(echo "$rawline" | cut -d: -f1)
+                CURRENT_FILE=$(basename "$FILE_PATH")
+                LINE_NUM=$(echo "$rawline" | cut -d: -f2)
+                REST=$(echo "$rawline" | cut -d: -f4-)
+                RULE=$(echo "$REST" | grep -oE "\([a-z-]+\)$" | tr -d '()')
+                MSG=$(echo "$REST" | sed 's/ *([a-z-]*)$//' | sed 's/^ *//' | cut -c1-55)
+                echo "| \`${CURRENT_FILE}\` | $LINE_NUM | $MSG | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
               fi
             done <<< "$HTML_CLEAN"
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
             echo "✅ HTML sem erros estruturais" >> $GITHUB_STEP_SUMMARY
-          fi
           fi
 
       - name: Stylelint — CSS / SCSS (regras embutidas)
