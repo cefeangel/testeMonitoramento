@@ -274,6 +274,9 @@ jobs:
         continue-on-error: true
         run: |
           echo "### 🎨 Stylelint — CSS / SCSS" >> $GITHUB_STEP_SUMMARY
+          # Grava config Stylelint embutida em arquivo temporário
+          echo '{"extends":["stylelint-config-standard"]}' > /tmp/stylelint-ci.json
+
           if ls .stylelintrc* stylelint.config* 2>/dev/null | grep -q .; then
             CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
               \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
@@ -281,7 +284,7 @@ jobs:
           else
             CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
               \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
-              xargs npx stylelint --config '{"extends":["stylelint-config-standard"]}' 2>&1) || true
+              xargs npx stylelint --config /tmp/stylelint-ci.json 2>&1) || true
           fi
           echo "$CSS_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
           CSS_ERRORS=$(echo "$CSS_OUT" | grep -c "✖\|error" || echo "0")
