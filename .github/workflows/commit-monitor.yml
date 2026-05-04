@@ -223,25 +223,8 @@ jobs:
               [ -z "$RULE" ] && RULE="-"
               MSG_RAW=$(echo "$MSG_FULL" | sed -E 's/ \([a-z][a-z0-9-]*\)$//')
 
-              # Traduz mensagens comuns para português
-              case "$RULE" in
-                no-undef)        MSG_PT="Variável global não declarada — pode ser typo" ;;
-                no-unused-vars)  MSG_PT="Variável declarada mas não utilizada" ;;
-                no-redeclare)    MSG_PT="Variável declarada mais de uma vez" ;;
-                no-unreachable)  MSG_PT="Código inalcançável (após return/throw)" ;;
-                no-duplicate-case) MSG_PT="Caso duplicado em switch" ;;
-                no-constant-condition) MSG_PT="Condição sempre verdadeira ou falsa" ;;
-                no-eval)         MSG_PT="Uso de eval() — risco de segurança" ;;
-                no-implied-eval) MSG_PT="setTimeout/setInterval com string — equivalente a eval" ;;
-                no-new-func)     MSG_PT="new Function() — equivalente a eval" ;;
-                eqeqeq)          MSG_PT="Use === ao invés de ==" ;;
-                no-var)          MSG_PT="Use let/const ao invés de var" ;;
-                prefer-const)    MSG_PT="Variável nunca reatribuída — use const" ;;
-                use-isnan)       MSG_PT="Use isNaN() ao invés de == NaN" ;;
-                no-empty)        MSG_PT="Bloco {} vazio" ;;
-                semi)            MSG_PT="Falta ponto e vírgula no final" ;;
-                *)               MSG_PT=$(echo "$MSG_RAW" | cut -c1-50) ;;
-              esac
+              # Usa mensagem original do ESLint (mais precisa — indica a variável exata)
+              MSG_PT=$(echo "$MSG_RAW" | cut -c1-60)
 
               ICON="⚠️"
               [ "$TYPE" = "Error" ] && ICON="❌"
