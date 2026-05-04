@@ -164,11 +164,16 @@ jobs:
           fi
           echo "sourceType detectado: $SOURCETYPE" >> $GITHUB_STEP_SUMMARY
 
-                    # (Detecção de globals removida — não era essencial e dependia de jq)
+                    # Detecta globals do projeto (window.X, const X global) e gera lista para ESLint
+          GLOBALS_LIST=$(grep -rh --include="*.js" -oP "(?<=window\.)[a-zA-Z_][a-zA-Z0-9_]*(?=\s*=)" . \
+            --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist 2>/dev/null | sort -u | head -50 | tr '\n' ',')
+
+          # Gera JSON dos globals via Python (sem depender de jq, evita problemas com {)
+          GLOBALS_JSON=$(echo "$GLOBALS_LIST" | python3 -c "import sys; names = [n.strip() for n in sys.stdin.read().split(',') if n.strip()]; print(','.join([f'\"{n}\":\"readonly\"' for n in names]))")
 
           # Gera config ESLint em uma linha (evita conflito de { } com shell e YAML)
-          echo '{"env":{"node":true,"browser":true,"es2022":true,"commonjs":true},"parserOptions":{"ecmaVersion":2022,"sourceType":"SOURCETYPE_PLACEHOLDER"},"rules":{"no-undef":"warn","no-unused-vars":"warn","no-redeclare":"error","no-unreachable":"error","no-duplicate-case":"error","no-constant-condition":"error","no-eval":"error","no-implied-eval":"error","no-new-func":"error","eqeqeq":["error","always"],"no-var":"error","prefer-const":"warn","use-isnan":"error","no-empty":"warn","semi":["warn","always"]},"ignorePatterns":["node_modules/","dist/","build/","vendor/"]}' \
-            | sed "s/SOURCETYPE_PLACEHOLDER/$SOURCETYPE/g" > /tmp/eslintrc-ci.json
+          echo '{"env":{"node":true,"browser":true,"es2022":true,"commonjs":true},"parserOptions":{"ecmaVersion":2022,"sourceType":"SOURCETYPE_PLACEHOLDER"},"globals":{GLOBALS_PLACEHOLDER},"rules":{"no-undef":"error","no-unused-vars":"warn","no-redeclare":"error","no-unreachable":"error","no-duplicate-case":"error","no-constant-condition":"error","no-eval":"error","no-implied-eval":"error","no-new-func":"error","eqeqeq":["error","always"],"no-var":"error","prefer-const":"warn","use-isnan":"error","no-empty":"warn","semi":["warn","always"]},"ignorePatterns":["node_modules/","dist/","build/","vendor/"]}' \
+            | sed "s/SOURCETYPE_PLACEHOLDER/$SOURCETYPE/g" | sed "s|GLOBALS_PLACEHOLDER|$GLOBALS_JSON|g" > /tmp/eslintrc-ci.json
 
           echo "📋 Analisando JavaScript/TypeScript" >> $GITHUB_STEP_SUMMARY
 
