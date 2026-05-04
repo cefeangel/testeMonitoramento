@@ -1,3 +1,1 @@
-function teste() {
-  console.log("erro de sintaxe"
-}
+console.log(usuario.nome);
