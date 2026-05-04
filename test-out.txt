@@ -1,6 +1,0 @@
-[dotenv@17.3.1] injecting env (13) from .env -- tip: ⚙️  override existing env vars with { override: true }
-🚀 Iniciando teste de upload estruturado para o evento 1 e cronograma 1...
-📤 Enviando foto simulada para o Google Cloud Storage...
-✅ Upload concluído!
-🔗 URL Gerada: https://storage.googleapis.com/api-eventos/events/1/schedules/1/photos/1774888821118-9044aa30-8a0f-4dc1-8110-4663412ce6cd.png
-✨ A estrutura do caminho (path) está CORRETA!
