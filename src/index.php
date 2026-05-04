@@ -1,4 +1,4 @@
 <?php
-while (true) {
-    echo "loop infinito\n";
-}
+$json = "{ nome: 'angelo' }";
+$data = json_decode($json, true);
+var_dump($data);
