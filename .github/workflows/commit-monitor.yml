@@ -403,6 +403,84 @@ jobs:
             echo "✅ CSS sem erros" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # ── Link Checker (Linkinator) ────────────
+      - name: 🔗 Verificação de Links Quebrados
+        if: steps.detect-lang.outputs.has_html == 'true'
+        continue-on-error: true
+        run: |
+          echo "## 🔗 Verificação de Links" >> $GITHUB_STEP_SUMMARY
+          npm install -g linkinator 2>/dev/null || true
+
+          # Roda linkinator em todos os HTMLs, ignora externos lentos e protocolos especiais
+          # --skip evita timeouts em domínios externos pesados; ajuste conforme necessário
+          LINK_OUT=$(linkinator . \
+            --recurse \
+            --format json \
+            --skip "^mailto:" \
+            --skip "^tel:" \
+            --skip "^javascript:" \
+            --skip "^#" \
+            --skip "node_modules" \
+            --skip "\.github" \
+            --timeout 5000 \
+            --retry \
+            2>/dev/null) || true
+
+          # Extrai links quebrados via Python (parse JSON robusto)
+          cat > /tmp/parse_links.py << 'PYEOF'
+          import json, sys, os
+          try:
+              data = json.loads(sys.stdin.read())
+          except Exception:
+              print("PARSE_ERROR")
+              sys.exit(0)
+
+          broken = [l for l in data.get("links", []) if l.get("state") == "BROKEN"]
+          print(f"COUNT={len(broken)}")
+          for link in broken:
+              url = link.get("url", "")
+              status = link.get("status", "?")
+              parent = link.get("parent", "")
+              # Mostra apenas o nome do arquivo pai, sem path completo
+              parent_file = os.path.basename(parent) if parent else "—"
+              # URL truncada se muito longa
+              url_short = url if len(url) <= 60 else url[:57] + "..."
+              # Traduz status para mensagem em português
+              if status == 404:
+                  msg = "Página/arquivo não encontrado"
+              elif status == 403:
+                  msg = "Acesso proibido"
+              elif status == 500:
+                  msg = "Erro interno do servidor"
+              elif status == 0 or status is None:
+                  msg = "Link inacessível (timeout/DNS)"
+              elif isinstance(status, int) and status >= 400:
+                  msg = f"Erro HTTP {status}"
+              else:
+                  msg = f"Status: {status}"
+              # Escapa pipes para não quebrar a tabela markdown
+              url_safe = url_short.replace("|", "\\|")
+              print(f"ROW|{parent_file}|{url_safe}|{status}|{msg}")
+          PYEOF
+
+          PARSED=$(echo "$LINK_OUT" | python3 /tmp/parse_links.py)
+          BROKEN_COUNT=$(echo "$PARSED" | grep -oE "^COUNT=[0-9]+" | head -1 | cut -d= -f2)
+          BROKEN_COUNT=${BROKEN_COUNT:-0}
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$BROKEN_COUNT" -gt 0 ] 2>/dev/null; then
+            echo "⚠️ **$BROKEN_COUNT link(s) quebrado(s) encontrado(s)**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Arquivo | Link | Status | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "$PARSED" | grep "^ROW|" | while IFS='|' read -r _ pfile url status msg; do
+              echo "| \`$pfile\` | \`$url\` | $status | $msg |" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "has_lint_warning=true" >> $GITHUB_ENV
+          else
+            echo "✅ Todos os links verificados estão funcionando" >> $GITHUB_STEP_SUMMARY
+          fi
+
       # ── PHP ──────────────────────────────────
       - name: Setup PHP
         if: steps.detect-lang.outputs.has_php == 'true'
