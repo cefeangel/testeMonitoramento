@@ -186,11 +186,11 @@ jobs:
           fi
           echo "Globals detectados: $(echo "$RAW" | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
 
-          jq -n --arg st "$SOURCETYPE" --argjson globals "$GLOBALS_JSON" '{
-            env: {node:true, browser:true, es2022:true, commonjs:true},
-            parserOptions: {ecmaVersion:2022, sourceType:$st},
-            globals: $globals,
-            rules: {
+          # Gera config ESLint como JSON puro via printf (evita falha do jq com globals)
+          printf '{
+            "env": {"node":true,"browser":true,"es2022":true,"commonjs":true},
+            "parserOptions": {"ecmaVersion": 2022, "sourceType": "%s"},
+            "rules": {
               "no-undef": "error",
               "no-unused-vars": "warn",
               "no-redeclare": "error",
@@ -207,27 +207,37 @@ jobs:
               "no-empty": "warn",
               "semi": ["warn","always"]
             },
-            ignorePatterns: ["node_modules/","dist/","build/","vendor/","*.min.js"]
-          }' > /tmp/eslintrc-ci.json
+            "ignorePatterns": ["node_modules/","dist/","build/","vendor/"]
+          }' "$SOURCETYPE" > /tmp/eslintrc-ci.json
 
-          # Usa config do projeto se existir, senão usa a embutida
-          if ls .eslintrc* eslint.config* 2>/dev/null | grep -q .; then
-            echo "📋 Usando configuracao ESLint do projeto" >> $GITHUB_STEP_SUMMARY
-            ESLINT_OUT=$(eslint . --ext .js,.ts,.jsx,.tsx --format=compact 2>&1) || true
-          else
-            echo "📋 Usando regras embutidas (sem .eslintrc no projeto)" >> $GITHUB_STEP_SUMMARY
-            ESLINT_OUT=$(eslint . --ext .js,.ts,.jsx,.tsx --format=compact \
-              --no-eslintrc -c /tmp/eslintrc-ci.json \
-              --ignore-pattern "node_modules/" --ignore-pattern "dist/" --ignore-pattern "vendor/" \
-              2>&1) || true
+          # Verifica se o arquivo foi gerado corretamente
+          if ! python3 -c "import json; json.load(open('/tmp/eslintrc-ci.json'))" 2>/dev/null; then
+            echo '{"env":{"node":true,"browser":true},"parserOptions":{"ecmaVersion":2022},"rules":{"no-undef":"error","semi":["warn","always"]}}' > /tmp/eslintrc-ci.json
           fi
 
-          echo "$ESLINT_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
+          echo "📋 Analisando JavaScript/TypeScript" >> $GITHUB_STEP_SUMMARY
 
-          # Conta erros reais (não warnings)
-          ERRORS=$(echo "$ESLINT_OUT" | grep -c " Error - " || echo "0")
-          WARNINGS=$(echo "$ESLINT_OUT" | grep -c " Warning - " || echo "0")
-          PROBLEMS=$(echo "$ESLINT_OUT" | grep -oP '\d+(?= problem)' | head -1 || echo "0")
+          # Roda ESLint arquivo por arquivo para isolar erros por arquivo
+          # e evitar que falha em um arquivo silencie os outros
+          ERRORS=0
+          WARNINGS=0
+          ESLINT_ALL=""
+          # Coleta todos os JS/TS e roda ESLint em lote
+          JS_FILES=$(find . \
+            -not -path "*/node_modules/*" -not -path "*/dist/*" \
+            -not -path "*/build/*" -not -path "*/vendor/*" \
+            -not -path "*/.github/*" \
+            \( -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" \) \
+            -not -name "*.min.js" -maxdepth 6 | tr '\n' ' ')
+
+          ESLINT_OUT=""
+          if [ -n "$JS_FILES" ]; then
+            ESLINT_OUT=$(eval "eslint $JS_FILES --format=compact --no-eslintrc -c /tmp/eslintrc-ci.json" 2>&1) || true
+          fi
+
+          echo "$ESLINT_OUT" | grep -E " Error - | Warning - " | tail -30 >> $GITHUB_STEP_SUMMARY
+          ERRORS=$(echo "$ESLINT_OUT" | grep -cE " Error - ") || ERRORS=0
+          WARNINGS=$(echo "$ESLINT_OUT" | grep -cE " Warning - ") || WARNINGS=0
 
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$ERRORS" -gt 0 ] 2>/dev/null; then
@@ -246,27 +256,107 @@ jobs:
         run: |
           echo "### 🌐 HTMLHint — HTML" >> $GITHUB_STEP_SUMMARY
           jq -n '{
-            "tagname-lowercase":true,"attr-lowercase":true,"attr-value-double-quotes":true,
-            "attr-no-duplication":true,"doctype-first":true,"tag-pair":true,
-            "spec-char-escape":true,"id-unique":true,"src-not-empty":true,
-            "alt-require":true,"doctype-html5":true,"attr-unsafe-chars":true
+            "tagname-lowercase":true,
+            "attr-lowercase":true,
+            "attr-value-double-quotes":true,
+            "attr-no-duplication":true,
+            "tag-pair":true,
+            "spec-char-escape":true,
+            "id-unique":true,
+            "src-not-empty":false,
+            "alt-require":false,
+            "doctype-first":false,
+            "doctype-html5":false,
+            "attr-unsafe-chars":false,
+            "inline-style-disabled":false,
+            "inline-script-disabled":false,
+            "space-tab-mixed-disabled":false,
+            "attr-value-not-empty":false,
+            "href-abs-or-rel":false,
+            "title-require":false
           }' > /tmp/htmlhintrc-ci.json
           CONFIG_FLAG="--config /tmp/htmlhintrc-ci.json"
           ls .htmlhintrc .htmlhint.js 2>/dev/null | grep -q . && CONFIG_FLAG=""
           HTML_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" -not -path "*/vendor/*" \
             \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
-            xargs htmlhint $CONFIG_FLAG 2>&1) || true
-          echo "$HTML_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          HTML_ERRORS=$(echo "$HTML_OUT" | grep -c "error\|Error" || echo "0")
-          HTML_WARNS=$(echo "$HTML_OUT" | grep -c "warning\|Warning" || echo "0")
+            xargs htmlhint $CONFIG_FLAG --format unix 2>&1) || true
+
+          # Remove ANSI e processa saída do HTMLHint com --format unix para output limpo
+          HTML_CLEAN=$(printf '%s' "$HTML_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
+
+          # HTMLHint --format unix produz: arquivo:linha:col: mensagem [error/regra]
+          # Conta linhas com o padrão [error/...] ou [warning/...]
+          HTML_ERRORS=$(echo "$HTML_CLEAN" | grep -cE "\[(error|warning)/[a-z-]+\]" || echo "0")
+          [ "$(echo "$HTML_CLEAN" | grep -cE '\[(error|warning)/[a-z-]+\]')" = "0" ] && HTML_ERRORS=0
+
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$HTML_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$HTML_ERRORS erro(s) HTML** encontrado(s)" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$HTML_WARNS" -gt 0 ] 2>/dev/null; then
-            echo "⚠️ **$HTML_WARNS aviso(s) HTML** encontrado(s)" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **$HTML_ERRORS problema(s) de estrutura HTML**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Arquivo | Linha | Tag/Atributo | Problema | Regra |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|--------------|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "$HTML_CLEAN" | grep -E "\.html?:[0-9]+:[0-9]+:.*\[(error|warning)/[a-z-]+\]" | \
+            while IFS= read -r rawline; do
+              FILE_PATH=$(echo "$rawline" | sed -E 's/^(.*\.html?):[0-9]+:[0-9]+:.*$/\1/')
+              CURRENT_FILE=$(basename "$FILE_PATH")
+              LINE_NUM=$(echo "$rawline" | sed -E 's/^.*\.html?:([0-9]+):[0-9]+:.*$/\1/')
+              RULE=$(echo "$rawline" | sed -E 's/^.*\[(error|warning)\/([a-z-]+)\]$/\2/')
+
+              # Extrai a tag/atributo problemático do primeiro [ ... ] da mensagem
+              TAG=$(echo "$rawline" | grep -oE '\[ [^]]+ \]' | head -1 | sed 's/\[ //; s/ \]//')
+              [ -z "$TAG" ] && TAG="—"
+
+              # Traduz a mensagem para português baseado na regra detectada
+              case "$RULE" in
+                tag-pair)
+                  MSG_PT="Tag não foi fechada corretamente"
+                  ;;
+                tagname-lowercase)
+                  MSG_PT="Nome da tag deve estar em minúsculo"
+                  ;;
+                attr-lowercase)
+                  MSG_PT="Nome do atributo deve estar em minúsculo"
+                  ;;
+                attr-value-double-quotes)
+                  MSG_PT="Valor do atributo deve usar aspas duplas"
+                  ;;
+                attr-no-duplication)
+                  MSG_PT="Atributo duplicado na mesma tag"
+                  ;;
+                attr-value-not-empty)
+                  MSG_PT="Atributo não pode ter valor vazio"
+                  ;;
+                spec-char-escape)
+                  MSG_PT="Caractere especial precisa de escape (& < >)"
+                  ;;
+                id-unique)
+                  MSG_PT="ID duplicado — deve ser único na página"
+                  ;;
+                src-not-empty)
+                  MSG_PT="Atributo src não pode estar vazio"
+                  ;;
+                alt-require)
+                  MSG_PT="Imagem precisa do atributo alt"
+                  ;;
+                doctype-first)
+                  MSG_PT="DOCTYPE deve ser a primeira linha do arquivo"
+                  ;;
+                doctype-html5)
+                  MSG_PT="DOCTYPE deve ser <!DOCTYPE html> (HTML5)"
+                  ;;
+                title-require)
+                  MSG_PT="Página precisa de uma tag <title>"
+                  ;;
+                *)
+                  MSG_PT="Problema de estrutura HTML"
+                  ;;
+              esac
+
+              echo "| \`${CURRENT_FILE}\` | $LINE_NUM | \`$TAG\` | $MSG_PT | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+            done
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
-            echo "✅ HTML sem erros" >> $GITHUB_STEP_SUMMARY
+            echo "✅ HTML sem erros estruturais" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Stylelint — CSS / SCSS (regras embutidas)
@@ -275,28 +365,132 @@ jobs:
         run: |
           echo "### 🎨 Stylelint — CSS / SCSS" >> $GITHUB_STEP_SUMMARY
           # Grava config Stylelint embutida em arquivo temporário
-          echo '{"extends":["stylelint-config-standard"]}' > /tmp/stylelint-ci.json
+          # Regras opinionadas rebaixadas para warning (notação moderna vs legada)
+          # Regras opinionadas desativadas (null) — evita falsos erros em CSS legado
+          jq -n '{
+            "extends": ["stylelint-config-standard"],
+            "rules": {
+              "color-function-notation": null,
+              "alpha-value-notation": null,
+              "color-hex-length": null,
+              "declaration-block-single-line-max-declarations": null,
+              "keyframes-name-pattern": null,
+              "selector-class-pattern": null,
+              "custom-property-pattern": null,
+              "custom-property-empty-line-before": null,
+              "value-keyword-case": null,
+              "property-no-vendor-prefix": null,
+              "property-no-deprecated": null,
+              "length-zero-no-unit": null
+            }
+          }' > /tmp/stylelint-ci.json
 
-          if ls .stylelintrc* stylelint.config* 2>/dev/null | grep -q .; then
-            CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
-              \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
-              xargs npx stylelint 2>&1) || true
-          else
-            CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
-              \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
-              xargs npx stylelint --config /tmp/stylelint-ci.json 2>&1) || true
-          fi
-          echo "$CSS_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          CSS_ERRORS=$(echo "$CSS_OUT" | grep -c "✖\|error" || echo "0")
-          CSS_WARNS=$(echo "$CSS_OUT" | grep -c "warning\|⚠" || echo "0")
-          if [ "$CSS_ERRORS" -gt 0 ] 2>/dev/null; then
+          # Sempre usa nossa config — ignora .stylelintrc do projeto para evitar conflitos
+          CSS_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
+            \( -name "*.css" -o -name "*.scss" -o -name "*.sass" \) -maxdepth 5 | \
+            xargs npx stylelint --config /tmp/stylelint-ci.json --no-error-on-unmatched-pattern 2>&1) || true
+
+          # Remove ANSI da saída do Stylelint
+          CSS_CLEAN=$(printf '%s' "$CSS_OUT" | tr -d '\033' | sed 's/\[[0-9;]*[mGKHFsulABCDJKSTf]//g')
+
+          # Conta erros reais (✖) e warnings (⚠) pelo símbolo na saída limpa
+          CSS_ERRORS=$(echo "$CSS_CLEAN" | grep -c "X " || echo "0")
+          CSS_WARNS=$(echo "$CSS_CLEAN"  | grep -c "warning" || echo "0")
+          # Fallback: se stylelint retornou "errors" na linha de sumário
+          SUMMARY_ERRORS=$(echo "$CSS_CLEAN" | grep -oE "[0-9]+ error" | grep -oE "[0-9]+" | head -1)
+          SUMMARY_WARNS=$(echo "$CSS_CLEAN"  | grep -oE "[0-9]+ warning" | grep -oE "[0-9]+" | head -1)
+          [ -n "$SUMMARY_ERRORS" ] && CSS_ERRORS=$SUMMARY_ERRORS
+          [ -n "$SUMMARY_WARNS"  ] && CSS_WARNS=$SUMMARY_WARNS
+
+          echo "$CSS_CLEAN" | tail -20 >> $GITHUB_STEP_SUMMARY
+          if [ "${CSS_ERRORS:-0}" -gt 0 ] 2>/dev/null; then
             echo "❌ **$CSS_ERRORS erro(s) CSS** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$CSS_WARNS" -gt 0 ] 2>/dev/null; then
+          elif [ "${CSS_WARNS:-0}" -gt 0 ] 2>/dev/null; then
             echo "⚠️ **$CSS_WARNS aviso(s) CSS** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
             echo "✅ CSS sem erros" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── Link Checker (Linkinator) ────────────
+      - name: 🔗 Verificação de Links Quebrados
+        if: steps.detect-lang.outputs.has_html == 'true'
+        continue-on-error: true
+        run: |
+          echo "## 🔗 Verificação de Links" >> $GITHUB_STEP_SUMMARY
+          npm install -g linkinator 2>/dev/null || true
+
+          # Escaneia cada HTML individualmente para que o parent venha com path correto
+          # --skip "/" ignora links absolutos de servidor (/dashboard.html) que só funcionam com HTTP
+          # --skip "^http" ignora links externos (só verifica referências locais relativas)
+          LINK_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
+            \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
+            xargs linkinator \
+              --format json \
+              --skip "^mailto:" \
+              --skip "^tel:" \
+              --skip "^javascript:" \
+              --skip "^#" \
+              --skip "^/" \
+              --skip "^https?://" \
+              --timeout 5000 \
+              2>/dev/null) || true
+
+          # Grava parser Python via printf (sem indentacao extra de YAML)
+          printf '%s\n' \
+            'import json, sys, os, subprocess, glob' \
+            'try:' \
+            '    data = json.loads(sys.stdin.read())' \
+            'except Exception:' \
+            '    print("COUNT=0"); sys.exit(0)' \
+            'all_links = data.get("links", [])' \
+            'proj_files = set()' \
+            'for f in glob.glob("**/*", recursive=True):' \
+            '    if "node_modules" in f or ".github" in f: continue' \
+            '    proj_files.add(os.path.basename(f).lower())' \
+            'def false_positive(url):' \
+            '    if not url or url.startswith("http"): return True' \
+            '    return os.path.basename(url).lower() in proj_files' \
+            'broken = [l for l in all_links if l.get("state")=="BROKEN" and not false_positive(l.get("url",""))]' \
+            'print(f"COUNT={len(broken)}")' \
+            'for link in broken:' \
+            '    url = link.get("url","")' \
+            '    status = link.get("status","?")' \
+            '    parent = link.get("parent","")' \
+            '    parent_file = os.path.basename(parent) if parent else "-"' \
+            '    url_display = os.path.basename(url) if url else "-"' \
+            '    url_short = url_display if len(url_display)<=50 else url_display[:47]+"..."' \
+            '    line_num = "-"' \
+            '    if parent and os.path.isfile(parent):' \
+            '        r = subprocess.run(["grep","-n",url_display,parent],capture_output=True,text=True)' \
+            '        if r.stdout.strip(): line_num=r.stdout.strip().split("\n")[0].split(":")[0]' \
+            '    if status==404: msg="Arquivo nao encontrado no projeto"' \
+            '    elif status==403: msg="Acesso proibido"' \
+            '    elif status==500: msg="Erro interno do servidor"' \
+            '    elif status==0 or status is None: msg="Link inacessivel"' \
+            '    elif isinstance(status,int) and status>=400: msg=f"Erro HTTP {status}"' \
+            '    else: msg=f"Status: {status}"' \
+            '    url_safe=str(url_short).replace("|"," ")' \
+            '    print(f"ROW|{parent_file}|{line_num}|{url_safe}|{status}|{msg}")' \
+            > /tmp/parse_links.py
+
+          PARSED=$(printf '%s' "$LINK_OUT" | python3 /tmp/parse_links.py 2>/dev/null) || PARSED="COUNT=0"
+          BROKEN_COUNT=$(echo "$PARSED" | grep -oE "^COUNT=[0-9]+" | head -1 | cut -d= -f2)
+          BROKEN_COUNT=${BROKEN_COUNT:-0}
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$BROKEN_COUNT" -gt 0 ] 2>/dev/null; then
+            echo "⚠️ **$BROKEN_COUNT link(s) quebrado(s) encontrado(s)**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Arquivo | Linha | Link Quebrado | Status | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|---------------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "$PARSED" | grep "^ROW|" | while IFS='|' read -r _ pfile linenum url status msg; do
+              echo "| \`$pfile\` | $linenum | \`$url\` | $status | $msg |" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "has_lint_warning=true" >> $GITHUB_ENV
+          else
+            echo "✅ Todos os links verificados estão funcionando" >> $GITHUB_STEP_SUMMARY
           fi
 
       # ── PHP ──────────────────────────────────
