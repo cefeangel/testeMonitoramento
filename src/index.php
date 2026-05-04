@@ -1,2 +1,3 @@
 <?php
-echo $usuario;
+$data = [];
+echo $data['nome'];
