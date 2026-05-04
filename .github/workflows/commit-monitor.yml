@@ -411,59 +411,50 @@ jobs:
           echo "## 🔗 Verificação de Links" >> $GITHUB_STEP_SUMMARY
           npm install -g linkinator 2>/dev/null || true
 
-          # Roda linkinator em todos os HTMLs, ignora externos lentos e protocolos especiais
-          # --skip evita timeouts em domínios externos pesados; ajuste conforme necessário
-          LINK_OUT=$(linkinator . \
-            --recurse \
-            --format json \
-            --skip "^mailto:" \
-            --skip "^tel:" \
-            --skip "^javascript:" \
-            --skip "^#" \
-            --skip "node_modules" \
-            --skip "\.github" \
-            --timeout 5000 \
-            --retry \
-            2>/dev/null) || true
+          # Escaneia cada HTML individualmente para que o parent venha com path correto
+          LINK_OUT=$(find . -not -path "*/node_modules/*" -not -path "*/.github/*" \
+            \( -name "*.html" -o -name "*.htm" \) -maxdepth 5 | \
+            xargs linkinator \
+              --format json \
+              --skip "^mailto:" \
+              --skip "^tel:" \
+              --skip "^javascript:" \
+              --skip "^#" \
+              --timeout 5000 \
+              2>/dev/null) || true
 
-          # Extrai links quebrados via Python (parse JSON robusto)
-          cat > /tmp/parse_links.py << 'PYEOF'
-          import json, sys, os
-          try:
-              data = json.loads(sys.stdin.read())
-          except Exception:
-              print("PARSE_ERROR")
-              sys.exit(0)
+          # Grava parser Python via printf (sem indentacao extra de YAML)
+          printf '%s\n' \
+            'import json, sys, os, subprocess' \
+            'try:' \
+            '    data = json.loads(sys.stdin.read())' \
+            'except Exception:' \
+            '    print("COUNT=0"); sys.exit(0)' \
+            'broken = [l for l in data.get("links", []) if l.get("state") == "BROKEN"]' \
+            'print(f"COUNT={len(broken)}")' \
+            'for link in broken:' \
+            '    url = link.get("url", "")' \
+            '    status = link.get("status", "?")' \
+            '    parent = link.get("parent", "")' \
+            '    parent_file = os.path.basename(parent) if parent else "-"' \
+            '    url_display = os.path.basename(url) if url else "-"' \
+            '    url_short = url_display if len(url_display) <= 50 else url_display[:47] + "..."' \
+            '    line_num = "-"' \
+            '    if parent and os.path.isfile(parent):' \
+            '        needle = url_display.replace(".", "\\.").replace("/", "\\/" )' \
+            '        r = subprocess.run(["grep", "-n", url_display, parent], capture_output=True, text=True)' \
+            '        if r.stdout.strip(): line_num = r.stdout.strip().split("\n")[0].split(":")[0]' \
+            '    if status == 404: msg = "Pagina/arquivo nao encontrado"' \
+            '    elif status == 403: msg = "Acesso proibido"' \
+            '    elif status == 500: msg = "Erro interno do servidor"' \
+            '    elif status == 0 or status is None: msg = "Link inacessivel (timeout/DNS)"' \
+            '    elif isinstance(status, int) and status >= 400: msg = f"Erro HTTP {status}"' \
+            '    else: msg = f"Status: {status}"' \
+            '    url_safe = str(url_short).replace("|", " ")' \
+            '    print(f"ROW|{parent_file}|{line_num}|{url_safe}|{status}|{msg}")' \
+            > /tmp/parse_links.py
 
-          broken = [l for l in data.get("links", []) if l.get("state") == "BROKEN"]
-          print(f"COUNT={len(broken)}")
-          for link in broken:
-              url = link.get("url", "")
-              status = link.get("status", "?")
-              parent = link.get("parent", "")
-              # Mostra apenas o nome do arquivo pai, sem path completo
-              parent_file = os.path.basename(parent) if parent else "—"
-              # URL truncada se muito longa
-              url_short = url if len(url) <= 60 else url[:57] + "..."
-              # Traduz status para mensagem em português
-              if status == 404:
-                  msg = "Página/arquivo não encontrado"
-              elif status == 403:
-                  msg = "Acesso proibido"
-              elif status == 500:
-                  msg = "Erro interno do servidor"
-              elif status == 0 or status is None:
-                  msg = "Link inacessível (timeout/DNS)"
-              elif isinstance(status, int) and status >= 400:
-                  msg = f"Erro HTTP {status}"
-              else:
-                  msg = f"Status: {status}"
-              # Escapa pipes para não quebrar a tabela markdown
-              url_safe = url_short.replace("|", "\\|")
-              print(f"ROW|{parent_file}|{url_safe}|{status}|{msg}")
-          PYEOF
-
-          PARSED=$(echo "$LINK_OUT" | python3 /tmp/parse_links.py)
+          PARSED=$(printf '%s' "$LINK_OUT" | python3 /tmp/parse_links.py 2>/dev/null) || PARSED="COUNT=0"
           BROKEN_COUNT=$(echo "$PARSED" | grep -oE "^COUNT=[0-9]+" | head -1 | cut -d= -f2)
           BROKEN_COUNT=${BROKEN_COUNT:-0}
 
@@ -471,10 +462,10 @@ jobs:
           if [ "$BROKEN_COUNT" -gt 0 ] 2>/dev/null; then
             echo "⚠️ **$BROKEN_COUNT link(s) quebrado(s) encontrado(s)**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Arquivo | Link | Status | Problema |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-            echo "$PARSED" | grep "^ROW|" | while IFS='|' read -r _ pfile url status msg; do
-              echo "| \`$pfile\` | \`$url\` | $status | $msg |" >> $GITHUB_STEP_SUMMARY
+            echo "| Arquivo | Linha | Link Quebrado | Status | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|---------------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "$PARSED" | grep "^ROW|" | while IFS='|' read -r _ pfile linenum url status msg; do
+              echo "| \`$pfile\` | $linenum | \`$url\` | $status | $msg |" >> $GITHUB_STEP_SUMMARY
             done
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
