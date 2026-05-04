@@ -492,30 +492,44 @@ jobs:
         run: |
           echo "### 🐘 PHP_CodeSniffer — PHP" >> $GITHUB_STEP_SUMMARY
 
-          # Foca apenas em erros de sintaxe e lógica — ignora regras de formatação PSR
-          # Sniffs mantidos: sintaxe inválida, funções inexistentes, variáveis indefinidas
-          # Sniffs removidos: espaçamento, newlines, indentação, estilo de chaves, etc.
-          PHPCS_SNIFFS="Generic.PHP.Syntax,Generic.CodeAnalysis.UnusedFunctionParameter,Generic.CodeAnalysis.EmptyStatement,Generic.CodeAnalysis.ForLoopShouldBeWhileLoop,Generic.CodeAnalysis.JumbledIncrementer,Generic.CodeAnalysis.UnconditionalIfStatement"
-
+          # Foca em erros de sintaxe PHP — usa Generic.PHP.Syntax que é sempre disponível
           if [ -f "phpcs.xml" ] || [ -f ".phpcs.xml" ]; then
             PHPCS_OUT=$(phpcs --extensions=php --ignore=vendor/,node_modules/ . 2>&1) || true
           else
-            PHPCS_OUT=$(phpcs --sniffs="$PHPCS_SNIFFS" --extensions=php --ignore=vendor/,node_modules/ . 2>&1) || true
+            PHPCS_OUT=$(phpcs --standard=Generic --sniffs=Generic.PHP.Syntax --extensions=php --ignore=vendor/,node_modules/ . 2>&1) || true
           fi
 
-          # Filtra apenas linhas de erro real (não formatação)
-          PHPCS_CLEAN=$(echo "$PHPCS_OUT" | grep -v "newline\|whitespace\|indent\|spacing\|blank line\|PSR\|PHPCBF CAN FIX\|Time:\|Memory:" | grep -v "^$")
-          echo "$PHPCS_CLEAN" | tail -20 >> $GITHUB_STEP_SUMMARY
+          # Monta tabela com erros encontrados
+          # Formato phpcs: linha | SEVERITY | mensagem
+          PHPCS_ERRORS=$(echo "$PHPCS_OUT" | grep -cE "^ +[0-9]+ \| ERROR" || echo "0")
+          PHPCS_WARNS=$(echo "$PHPCS_OUT" | grep -cE "^ +[0-9]+ \| WARNING" || echo "0")
 
-          PHPCS_ERRORS=$(echo "$PHPCS_OUT" | grep -cE "\| ERROR \|" || echo "0")
-          PHPCS_WARNS=$(echo "$PHPCS_OUT" | grep -cE "\| WARNING \|" || echo "0")
-
-          if [ "$PHPCS_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$PHPCS_ERRORS erro(s) de sintaxe PHP** encontrado(s)" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$PHPCS_WARNS" -gt 0 ] 2>/dev/null; then
-            echo "⚠️ **$PHPCS_WARNS aviso(s) PHP** encontrado(s)" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_warning=true" >> $GITHUB_ENV
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$PHPCS_ERRORS" -gt 0 ] 2>/dev/null || [ "$PHPCS_WARNS" -gt 0 ] 2>/dev/null; then
+            if [ "$PHPCS_ERRORS" -gt 0 ] 2>/dev/null; then
+              echo "❌ **$PHPCS_ERRORS erro(s) de sintaxe PHP**" >> $GITHUB_STEP_SUMMARY
+              echo "has_lint_error=true" >> $GITHUB_ENV
+            else
+              echo "⚠️ **$PHPCS_WARNS aviso(s) PHP**" >> $GITHUB_STEP_SUMMARY
+              echo "has_lint_warning=true" >> $GITHUB_ENV
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Tipo | Arquivo | Linha | Regra | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------|-------|-------|----------|" >> $GITHUB_STEP_SUMMARY
+            CURRENT_FILE=""
+            while IFS= read -r line; do
+              # Detecta linha de arquivo: FILE: /path/to/file.php
+              if echo "$line" | grep -qE "^FILE: "; then
+                CURRENT_FILE=$(echo "$line" | sed "s|FILE: ||" | sed "s|.*/work/[^/]*/[^/]*/||" | sed "s|^\./||")
+              # Detecta linha de erro: "   3 | ERROR | mensagem"
+              elif echo "$line" | grep -qE "^ +[0-9]+ \| (ERROR|WARNING)"; then
+                LINE_NUM=$(echo "$line" | grep -oE "^ +[0-9]+" | tr -d ' ')
+                TYPE=$(echo "$line" | grep -oE "ERROR|WARNING" | head -1)
+                MSG=$(echo "$line" | sed -E 's/^ +[0-9]+ \| (ERROR|WARNING) \| //' | cut -c1-60 | tr -d '|')
+                ICON="⚠️"; [ "$TYPE" = "ERROR" ] && ICON="❌"
+                echo "| $ICON | \`${CURRENT_FILE:-?}\` | $LINE_NUM | \`php-syntax\` | $MSG |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done <<< "$PHPCS_OUT"
           else
             echo "✅ PHP sem erros de sintaxe" >> $GITHUB_STEP_SUMMARY
           fi
@@ -525,17 +539,30 @@ jobs:
         continue-on-error: true
         run: |
           echo "### 🔬 PHPStan — PHP" >> $GITHUB_STEP_SUMMARY
-          find . -name "*.php" -not -path "*/vendor/*" -maxdepth 5 > /tmp/php_files.txt
+          find . -name "*.php" -not -path "*/vendor/*" -not -path "*/node_modules/*" -maxdepth 5 > /tmp/php_files.txt
           if [ -f "phpstan.neon" ] || [ -f "phpstan.neon.dist" ]; then
-            STAN_OUT=$(head -20 /tmp/php_files.txt | xargs phpstan analyse --no-progress 2>&1) || true
+            STAN_OUT=$(head -20 /tmp/php_files.txt | xargs phpstan analyse --no-progress --error-format=raw 2>&1) || true
           else
-            STAN_OUT=$(head -20 /tmp/php_files.txt | xargs phpstan analyse --level=5 --no-progress 2>&1) || true
+            STAN_OUT=$(head -20 /tmp/php_files.txt | xargs phpstan analyse --level=5 --no-progress --error-format=raw 2>&1) || true
           fi
-          echo "$STAN_OUT" | tail -20 >> $GITHUB_STEP_SUMMARY
-          STAN_ERRORS=$(echo "$STAN_OUT" | grep -c "Found [^0].*error" || echo "0")
+
+          # Conta erros — formato raw: "arquivo:linha:mensagem"
+          STAN_ERRORS=$(echo "$STAN_OUT" | grep -cE "^[^:]+\.php:[0-9]+:" || echo "0")
+
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$STAN_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ PHPStan encontrou erros" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **$STAN_ERRORS erro(s) PHPStan**" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Tipo | Arquivo | Linha | Regra | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------|-------|-------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "$STAN_OUT" | grep -E "^[^:]+\.php:[0-9]+:" | head -30 | while IFS= read -r rawline; do
+              FILE_PATH=$(echo "$rawline" | cut -d: -f1)
+              FILE_NAME=$(echo "$FILE_PATH" | sed "s|.*/work/[^/]*/[^/]*/||" | sed "s|^\./||")
+              LINE_NUM=$(echo "$rawline" | cut -d: -f2)
+              MSG=$(echo "$rawline" | cut -d: -f3- | sed 's/^ *//' | cut -c1-60 | tr -d '|')
+              echo "| ❌ | \`$FILE_NAME\` | $LINE_NUM | \`phpstan\` | $MSG |" >> $GITHUB_STEP_SUMMARY
+            done
           else
             echo "✅ PHPStan sem erros" >> $GITHUB_STEP_SUMMARY
           fi
