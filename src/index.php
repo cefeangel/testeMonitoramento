@@ -1,4 +1,3 @@
 <?php
-$json = "{ nome: 'angelo' }";
-$data = json_decode($json, true);
-var_dump($data);
+$id = $_GET['id'];
+$query = "SELECT * FROM users WHERE id = $id";
