@@ -1,5 +1,2 @@
 <?php
-
-echo "teste";
-
-$var = 1
+echo $usuario;
