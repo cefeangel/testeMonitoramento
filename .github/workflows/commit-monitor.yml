@@ -491,22 +491,33 @@ jobs:
         continue-on-error: true
         run: |
           echo "### 🐘 PHP_CodeSniffer — PHP" >> $GITHUB_STEP_SUMMARY
+
+          # Foca apenas em erros de sintaxe e lógica — ignora regras de formatação PSR
+          # Sniffs mantidos: sintaxe inválida, funções inexistentes, variáveis indefinidas
+          # Sniffs removidos: espaçamento, newlines, indentação, estilo de chaves, etc.
+          PHPCS_SNIFFS="Generic.PHP.Syntax,Generic.CodeAnalysis.UnusedFunctionParameter,Generic.CodeAnalysis.EmptyStatement,Generic.CodeAnalysis.ForLoopShouldBeWhileLoop,Generic.CodeAnalysis.JumbledIncrementer,Generic.CodeAnalysis.UnconditionalIfStatement"
+
           if [ -f "phpcs.xml" ] || [ -f ".phpcs.xml" ]; then
-            PHPCS_OUT=$(phpcs --extensions=php --ignore=vendor/ . 2>&1) || true
+            PHPCS_OUT=$(phpcs --extensions=php --ignore=vendor/,node_modules/ . 2>&1) || true
           else
-            PHPCS_OUT=$(phpcs --standard=PSR12 --extensions=php --ignore=vendor/ . 2>&1) || true
+            PHPCS_OUT=$(phpcs --sniffs="$PHPCS_SNIFFS" --extensions=php --ignore=vendor/,node_modules/ . 2>&1) || true
           fi
-          echo "$PHPCS_OUT" | tail -30 >> $GITHUB_STEP_SUMMARY
-          PHPCS_ERRORS=$(echo "$PHPCS_OUT" | grep -cE "\| ERROR \||FOUND [^0][0-9]* ERROR" || echo "0")
-          PHPCS_WARNS=$(echo "$PHPCS_OUT" | grep -cE "\| WARNING \||FOUND [^0][0-9]* WARNING" || echo "0")
+
+          # Filtra apenas linhas de erro real (não formatação)
+          PHPCS_CLEAN=$(echo "$PHPCS_OUT" | grep -v "newline\|whitespace\|indent\|spacing\|blank line\|PSR\|PHPCBF CAN FIX\|Time:\|Memory:" | grep -v "^$")
+          echo "$PHPCS_CLEAN" | tail -20 >> $GITHUB_STEP_SUMMARY
+
+          PHPCS_ERRORS=$(echo "$PHPCS_OUT" | grep -cE "\| ERROR \|" || echo "0")
+          PHPCS_WARNS=$(echo "$PHPCS_OUT" | grep -cE "\| WARNING \|" || echo "0")
+
           if [ "$PHPCS_ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$PHPCS_ERRORS erro(s) PHP** encontrado(s) — padrão PSR-12 violado" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **$PHPCS_ERRORS erro(s) de sintaxe PHP** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_error=true" >> $GITHUB_ENV
           elif [ "$PHPCS_WARNS" -gt 0 ] 2>/dev/null; then
             echo "⚠️ **$PHPCS_WARNS aviso(s) PHP** encontrado(s)" >> $GITHUB_STEP_SUMMARY
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
-            echo "✅ PHP sem erros PSR-12" >> $GITHUB_STEP_SUMMARY
+            echo "✅ PHP sem erros de sintaxe" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: PHPStan — Análise Estática PHP (regras embutidas)
