@@ -437,6 +437,7 @@ jobs:
             'all_links = data.get("links", [])' \
             'proj_files = set()' \
             'for f in glob.glob("**/*", recursive=True):' \
+            '    if "node_modules" in f or ".github" in f: continue' \
             '    proj_files.add(os.path.basename(f).lower())' \
             'def false_positive(url):' \
             '    if not url or url.startswith("http"): return True' \
