@@ -1,3 +1,2 @@
 <?php
-$data = [];
-echo $data['nome'];
+minhaFuncaoFake();
