@@ -186,11 +186,11 @@ jobs:
           fi
           echo "Globals detectados: $(echo "$RAW" | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
 
-          jq -n --arg st "$SOURCETYPE" --argjson globals "$GLOBALS_JSON" '{
-            env: {node:true, browser:true, es2022:true, commonjs:true},
-            parserOptions: {ecmaVersion:2022, sourceType:$st},
-            globals: $globals,
-            rules: {
+          # Gera config ESLint como JSON puro via printf (evita falha do jq com globals)
+          printf '{
+            "env": {"node":true,"browser":true,"es2022":true,"commonjs":true},
+            "parserOptions": {"ecmaVersion": 2022, "sourceType": "%s"},
+            "rules": {
               "no-undef": "error",
               "no-unused-vars": "warn",
               "no-redeclare": "error",
@@ -207,16 +207,19 @@ jobs:
               "no-empty": "warn",
               "semi": ["warn","always"]
             },
-            ignorePatterns: ["node_modules/","dist/","build/","vendor/","*.min.js"]
-          }' > /tmp/eslintrc-ci.json
+            "ignorePatterns": ["node_modules/","dist/","build/","vendor/"]
+          }' "$SOURCETYPE" > /tmp/eslintrc-ci.json
 
-          # Sempre usa config embutida — garante detecção de erros de sintaxe/parse
-          echo "📋 Analisando com regras de qualidade embutidas" >> $GITHUB_STEP_SUMMARY
+          # Verifica se o arquivo foi gerado corretamente
+          if ! python3 -c "import json; json.load(open('/tmp/eslintrc-ci.json'))" 2>/dev/null; then
+            echo '{"env":{"node":true,"browser":true},"parserOptions":{"ecmaVersion":2022},"rules":{"no-undef":"error","semi":["warn","always"]}}' > /tmp/eslintrc-ci.json
+          fi
+
+          echo "📋 Analisando JavaScript/TypeScript" >> $GITHUB_STEP_SUMMARY
           ESLINT_OUT=$(eslint . --ext .js,.ts,.jsx,.tsx --format=compact \
             --no-eslintrc -c /tmp/eslintrc-ci.json \
             --ignore-pattern "node_modules/" --ignore-pattern "dist/" \
             --ignore-pattern "build/" --ignore-pattern "vendor/" \
-            --ignore-pattern "*.min.js" \
             2>&1) || true
 
           echo "$ESLINT_OUT" | tail -40 >> $GITHUB_STEP_SUMMARY
