@@ -1,3 +1,4 @@
 <?php
-$user = null;
-echo $user['nome'];
+while (true) {
+    echo "loop infinito\n";
+}
