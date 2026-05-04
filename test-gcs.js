@@ -1,1 +1,3 @@
-console.log(usuario.nome);
+function teste() {
+  console.log("erro de sintaxe"
+}
