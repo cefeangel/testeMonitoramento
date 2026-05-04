@@ -217,27 +217,26 @@ jobs:
 
           echo "📋 Analisando JavaScript/TypeScript" >> $GITHUB_STEP_SUMMARY
 
-          # Roda ESLint arquivo por arquivo para isolar erros por arquivo
-          # e evitar que falha em um arquivo silencie os outros
-          ERRORS=0
-          WARNINGS=0
-          ESLINT_ALL=""
-          # Coleta todos os JS/TS e roda ESLint em lote
-          JS_FILES=$(find . \
+          # Roda ESLint arquivo por arquivo via xargs — robusto para muitos arquivos
+          ESLINT_OUT=$(find . \
             -not -path "*/node_modules/*" -not -path "*/dist/*" \
             -not -path "*/build/*" -not -path "*/vendor/*" \
             -not -path "*/.github/*" \
             \( -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" \) \
-            -not -name "*.min.js" -maxdepth 6 | tr '\n' ' ')
+            -not -name "*.min.js" -maxdepth 6 \
+            -print0 | xargs -0 -r eslint \
+              --format=compact \
+              --no-eslintrc -c /tmp/eslintrc-ci.json \
+              2>&1) || true
 
-          ESLINT_OUT=""
-          if [ -n "$JS_FILES" ]; then
-            ESLINT_OUT=$(eval "eslint $JS_FILES --format=compact --no-eslintrc -c /tmp/eslintrc-ci.json" 2>&1) || true
-          fi
+          # Filtra e exibe apenas linhas de erro/warning (sem "Oops" e sem sumário)
+          ESLINT_ERRS=$(echo "$ESLINT_OUT" | grep -v "^$" | grep -v "problem" | grep -v "Oops" | grep -E " Error - | Warning - ")
+          echo "$ESLINT_ERRS" | tail -30 >> $GITHUB_STEP_SUMMARY
 
-          echo "$ESLINT_OUT" | grep -E " Error - | Warning - " | tail -30 >> $GITHUB_STEP_SUMMARY
-          ERRORS=$(echo "$ESLINT_OUT" | grep -cE " Error - ") || ERRORS=0
-          WARNINGS=$(echo "$ESLINT_OUT" | grep -cE " Warning - ") || WARNINGS=0
+          ERRORS=$(echo "$ESLINT_ERRS" | grep -cE " Error - ") || true
+          [ -z "$ESLINT_ERRS" ] && ERRORS=0
+          WARNINGS=$(echo "$ESLINT_ERRS" | grep -cE " Warning - ") || true
+          [ -z "$ESLINT_ERRS" ] && WARNINGS=0
 
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$ERRORS" -gt 0 ] 2>/dev/null; then
