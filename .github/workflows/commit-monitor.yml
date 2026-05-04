@@ -214,7 +214,7 @@ jobs:
             echo "$ESLINT_ERRS" | head -50 | while IFS= read -r rawline; do
               # Extrai campos via sed
               FILE_PATH=$(echo "$rawline" | sed -E 's/^([^:]+):.*$/\1/')
-              FILE_NAME=$(basename "$FILE_PATH")
+              FILE_NAME=$(echo "$FILE_PATH" | sed "s|.*/work/[^/]*/[^/]*/||" | sed "s|^\./||")
               LINE_NUM=$(echo "$rawline" | sed -E 's/.*line ([0-9]+).*/\1/')
               TYPE=$(echo "$rawline" | grep -oE " (Error|Warning) - " | tr -d ' -')
               # Pega tudo entre "Type - " e "(regra)"
