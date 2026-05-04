@@ -189,9 +189,8 @@ jobs:
               --no-eslintrc -c /tmp/eslintrc-ci.json \
               2>&1) || true
 
-          # Filtra e exibe apenas linhas de erro/warning (sem "Oops" e sem sumário)
+          # Filtra apenas linhas de erro/warning
           ESLINT_ERRS=$(echo "$ESLINT_OUT" | grep -v "^$" | grep -v "problem" | grep -v "Oops" | grep -E " Error - | Warning - ")
-          echo "$ESLINT_ERRS" | tail -30 >> $GITHUB_STEP_SUMMARY
 
           ERRORS=$(echo "$ESLINT_ERRS" | grep -cE " Error - ") || true
           [ -z "$ESLINT_ERRS" ] && ERRORS=0
@@ -199,12 +198,56 @@ jobs:
           [ -z "$ESLINT_ERRS" ] && WARNINGS=0
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "$ERRORS" -gt 0 ] 2>/dev/null; then
-            echo "❌ **$ERRORS erro(s)** e **$WARNINGS aviso(s)** encontrado(s)" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_error=true" >> $GITHUB_ENV
-          elif [ "$WARNINGS" -gt 0 ] 2>/dev/null; then
-            echo "⚠️ **$WARNINGS aviso(s)** encontrado(s) — revisar recomendado" >> $GITHUB_STEP_SUMMARY
-            echo "has_lint_warning=true" >> $GITHUB_ENV
+          if [ "$ERRORS" -gt 0 ] 2>/dev/null || [ "$WARNINGS" -gt 0 ] 2>/dev/null; then
+            if [ "$ERRORS" -gt 0 ] 2>/dev/null; then
+              echo "❌ **$ERRORS erro(s)** e **$WARNINGS aviso(s)** encontrado(s)" >> $GITHUB_STEP_SUMMARY
+              echo "has_lint_error=true" >> $GITHUB_ENV
+            else
+              echo "⚠️ **$WARNINGS aviso(s)** encontrado(s) — revisar recomendado" >> $GITHUB_STEP_SUMMARY
+              echo "has_lint_warning=true" >> $GITHUB_ENV
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Tipo | Arquivo | Linha | Regra | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------|-------|-------|----------|" >> $GITHUB_STEP_SUMMARY
+
+            # Parse cada linha do ESLint compact: arquivo: line N, col M, Type - Mensagem (regra)
+            echo "$ESLINT_ERRS" | head -50 | while IFS= read -r rawline; do
+              # Extrai campos via sed
+              FILE_PATH=$(echo "$rawline" | sed -E 's/^([^:]+):.*$/\1/')
+              FILE_NAME=$(basename "$FILE_PATH")
+              LINE_NUM=$(echo "$rawline" | sed -E 's/.*line ([0-9]+).*/\1/')
+              TYPE=$(echo "$rawline" | grep -oE " (Error|Warning) - " | tr -d ' -')
+              # Pega tudo entre "Type - " e "(regra)"
+              MSG_FULL=$(echo "$rawline" | sed -E 's/.* (Error|Warning) - (.*)/\2/')
+              RULE=$(echo "$MSG_FULL" | grep -oE "\([a-z][a-z0-9-]*\)$" | tr -d '()')
+              [ -z "$RULE" ] && RULE="-"
+              MSG_RAW=$(echo "$MSG_FULL" | sed -E 's/ \([a-z][a-z0-9-]*\)$//')
+
+              # Traduz mensagens comuns para português
+              case "$RULE" in
+                no-undef)        MSG_PT="Variável global não declarada — pode ser typo" ;;
+                no-unused-vars)  MSG_PT="Variável declarada mas não utilizada" ;;
+                no-redeclare)    MSG_PT="Variável declarada mais de uma vez" ;;
+                no-unreachable)  MSG_PT="Código inalcançável (após return/throw)" ;;
+                no-duplicate-case) MSG_PT="Caso duplicado em switch" ;;
+                no-constant-condition) MSG_PT="Condição sempre verdadeira ou falsa" ;;
+                no-eval)         MSG_PT="Uso de eval() — risco de segurança" ;;
+                no-implied-eval) MSG_PT="setTimeout/setInterval com string — equivalente a eval" ;;
+                no-new-func)     MSG_PT="new Function() — equivalente a eval" ;;
+                eqeqeq)          MSG_PT="Use === ao invés de ==" ;;
+                no-var)          MSG_PT="Use let/const ao invés de var" ;;
+                prefer-const)    MSG_PT="Variável nunca reatribuída — use const" ;;
+                use-isnan)       MSG_PT="Use isNaN() ao invés de == NaN" ;;
+                no-empty)        MSG_PT="Bloco {} vazio" ;;
+                semi)            MSG_PT="Falta ponto e vírgula no final" ;;
+                *)               MSG_PT=$(echo "$MSG_RAW" | cut -c1-50) ;;
+              esac
+
+              ICON="⚠️"
+              [ "$TYPE" = "Error" ] && ICON="❌"
+              MSG_SAFE=$(echo "$MSG_PT" | tr -d '|')
+              echo "| $ICON | \`$FILE_NAME\` | $LINE_NUM | \`$RULE\` | $MSG_SAFE |" >> $GITHUB_STEP_SUMMARY
+            done
           else
             echo "✅ JavaScript sem erros ou avisos" >> $GITHUB_STEP_SUMMARY
           fi
