@@ -192,6 +192,19 @@ jobs:
           # Filtra apenas linhas de erro/warning
           ESLINT_ERRS=$(echo "$ESLINT_OUT" | grep -v "^$" | grep -v "problem" | grep -v "Oops" | grep -E " Error - | Warning - ")
 
+          # Salva erros em arquivo para uso na notificação Discord
+          echo "$ESLINT_ERRS" | head -10 | while IFS= read -r rawline; do
+            FILE_PATH=$(echo "$rawline" | sed -E 's/^([^:]+):.*$/\1/')
+            FILE_NAME=$(echo "$FILE_PATH" | sed "s|.*/work/[^/]*/[^/]*/||" | sed "s|^\.\?/||")
+            LINE_NUM=$(echo "$rawline" | sed -E 's/.*line ([0-9]+).*/\1/')
+            TYPE=$(echo "$rawline" | grep -oE " (Error|Warning) - " | tr -d ' -')
+            MSG_FULL=$(echo "$rawline" | sed -E 's/.* (Error|Warning) - (.*)/\2/')
+            RULE=$(echo "$MSG_FULL" | grep -oE "\([a-z][a-z0-9-]*\)$" | tr -d '()')
+            MSG=$(echo "$MSG_FULL" | sed -E 's/ \([a-z][a-z0-9-]*\)$//' | cut -c1-50 | tr -d '|')
+            ICON="⚠️"; [ "$TYPE" = "Error" ] && ICON="❌"
+            echo "ROW|$ICON|$FILE_NAME|$LINE_NUM|${RULE:--}|$MSG"
+          done > /tmp/eslint_errs.txt
+
           ERRORS=$(echo "$ESLINT_ERRS" | grep -cE " Error - ") || true
           [ -z "$ESLINT_ERRS" ] && ERRORS=0
           WARNINGS=$(echo "$ESLINT_ERRS" | grep -cE " Warning - ") || true
@@ -338,6 +351,7 @@ jobs:
               esac
 
               echo "| \`${CURRENT_FILE}\` | $LINE_NUM | \`$TAG\` | $MSG_PT | \`$RULE\` |" >> $GITHUB_STEP_SUMMARY
+              echo "ROW|${CURRENT_FILE}|$LINE_NUM|$TAG|$MSG_PT|$RULE" >> /tmp/html_issues.txt
             done
             echo "has_lint_warning=true" >> $GITHUB_ENV
           else
@@ -1053,11 +1067,46 @@ jobs:
           [ "$SECURITY_RESULT" != "success" ] && { COLOR=15158332; TITLE_EMOJI="❌"; }
           [ "$SECRETS_RESULT"  != "success" ] && { COLOR=15158332; TITLE_EMOJI="❌"; }
 
-          # Resumo da IA (primeiras 800 chars para não estourar limite Discord)
-          AI_SHORT=$(echo "$AI_SUMMARY" | head -c 800)
-          [ ${#AI_SUMMARY} -gt 800 ] && AI_SHORT="${AI_SHORT}..."
+          # Coleta resumo dos problemas encontrados para exibir no Discord
+          ISSUES_SUMMARY=""
 
-          PAYLOAD=$(jq -nc             --arg title  "$TITLE_EMOJI Novo commit em ${REPO##*/}"             --arg author "$AUTHOR <$EMAIL>"             --arg branch "$BRANCH"             --arg sha    "${SHA:0:8}"             --arg msg    "$COMMIT_MSG"             --arg files  "$FILES arquivo(s) alterado(s)"             --arg ai     "$AI_SHORT"             --arg q      "$Q"             --arg s      "$S"             --arg sec    "$SEC"             --arg url    "$RUN_URL"             --argjson color "$COLOR"             '{
+          # ESLint JS
+          if [ -f /tmp/eslint_errs.txt ] && [ -s /tmp/eslint_errs.txt ]; then
+            JS_COUNT=$(wc -l < /tmp/eslint_errs.txt)
+            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n🔍 **JS/TS** — ${JS_COUNT} problema(s):"
+            head -5 /tmp/eslint_errs.txt | while IFS='|' read -r _ icon file line rule msg; do
+              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  $icon \`${file}\` L${line} — ${msg}"
+            done
+          fi
+
+          # HTMLHint
+          if [ -f /tmp/html_issues.txt ] && [ -s /tmp/html_issues.txt ]; then
+            HTML_COUNT=$(wc -l < /tmp/html_issues.txt)
+            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n\n🌐 **HTML** — ${HTML_COUNT} problema(s):"
+            head -3 /tmp/html_issues.txt | while IFS='|' read -r _ file line tag msg rule; do
+              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  ⚠️ \`${file}\` L${line} — ${msg}"
+            done
+          fi
+
+          # PHP Segurança
+          if [ -f /tmp/php_vulns.txt ] && [ -s /tmp/php_vulns.txt ]; then
+            PHP_COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo "0")
+            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n\n🔒 **PHP Segurança** — ${PHP_COUNT} aviso(s):"
+            grep "^ROW" /tmp/php_vulns.txt | head -3 | while IFS='|' read -r _ icon file line rule msg; do
+              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  $icon \`${file}\` L${line} — ${msg}"
+            done
+          fi
+
+          # Trunca para caber no Discord (max 1000 chars)
+          [ -z "$ISSUES_SUMMARY" ] && ISSUES_SUMMARY="✅ Nenhum problema encontrado"
+          ISSUES_SHORT=$(echo "$ISSUES_SUMMARY" | head -c 900)
+          [ ${#ISSUES_SUMMARY} -gt 900 ] && ISSUES_SHORT="${ISSUES_SHORT}\n_...e mais_"
+
+          # Resumo da IA (primeiras 600 chars para não estourar limite Discord)
+          AI_SHORT=$(echo "$AI_SUMMARY" | head -c 600)
+          [ ${#AI_SUMMARY} -gt 600 ] && AI_SHORT="${AI_SHORT}..."
+
+          PAYLOAD=$(jq -nc             --arg title  "$TITLE_EMOJI Novo commit em ${REPO##*/}"             --arg author "$AUTHOR <$EMAIL>"             --arg branch "$BRANCH"             --arg sha    "${SHA:0:8}"             --arg msg    "$COMMIT_MSG"             --arg files  "$FILES arquivo(s) alterado(s)"             --arg ai     "$AI_SHORT"             --arg q      "$Q"             --arg s      "$S"             --arg sec    "$SEC"             --arg url    "$RUN_URL"             --arg issues "$ISSUES_SHORT"             --argjson color "$COLOR"             '{
               embeds: [{
                 title: $title,
                 color: $color,
@@ -1069,6 +1118,7 @@ jobs:
                   { name: "📝 Mensagem",    value: $msg,    inline: false },
                   { name: "📂 Alterações",  value: $files,  inline: false },
                   { name: "🤖 Análise IA",  value: $ai,     inline: false },
+                  { name: "🔎 Problemas Encontrados", value: $issues, inline: false },
                   { name: "🧹 Qualidade",   value: $q,      inline: true  },
                   { name: "🛡️ Vulnerabilidades", value: $s, inline: true  },
                   { name: "🔐 Segredos",    value: $sec,    inline: true  }
