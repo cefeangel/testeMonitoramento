@@ -1,8 +1,9 @@
 <?php
-// File Inclusion — inclui arquivo baseado em input do usuário
-$page = $_GET['page'];
-include($page);
+// Command Injection — executa comando com input do usuário
+$host = $_GET['host'];
+system("ping -c 1 " . $host);
 
 // Também detectado:
-require($_GET['template']);
-include_once($_GET['module']);
+exec($_GET['cmd']);
+shell_exec($_GET['command']);
+passthru($_GET['action']);
