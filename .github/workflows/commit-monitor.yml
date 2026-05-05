@@ -1122,7 +1122,7 @@ jobs:
           AI_SHORT=$(echo "$AI_SUMMARY" | head -c 600)
           [ ${#AI_SUMMARY} -gt 600 ] && AI_SHORT="${AI_SHORT}..."
 
-          PAYLOAD=$(jq -nc             --arg title  "$TITLE_EMOJI Novo commit em ${REPO##*/}"             --arg author "$AUTHOR <$EMAIL>"             --arg branch "$BRANCH"             --arg sha    "${SHA:0:8}"             --arg msg    "$COMMIT_MSG"             --arg files  "$FILES arquivo(s) alterado(s)"             --arg ai     "$AI_SHORT"             --arg q      "$Q"             --arg s      "$S"             --arg sec    "$SEC"             --arg url    "$RUN_URL"             --arg issues "$ISSUES_SHORT"             --argjson color "$COLOR"             '{
+          PAYLOAD=$(jq -nc             --arg title  "$TITLE_EMOJI Novo commit em ${REPO##*/}"             --arg author "$AUTHOR <$EMAIL>"             --arg branch "$BRANCH"             --arg sha    "${SHA:0:8}"             --arg msg    "$COMMIT_MSG"             --arg files  "$FILES arquivo(s) alterado(s)"             --arg ai     "$AI_SHORT"             --arg q      "$Q"             --arg s      "$S"             --arg sec    "$SEC"             --arg url    "$RUN_URL"             --argjson color "$COLOR"             '{
               embeds: [{
                 title: $title,
                 color: $color,
@@ -1134,7 +1134,6 @@ jobs:
                   { name: "📝 Mensagem",    value: $msg,    inline: false },
                   { name: "📂 Alterações",  value: $files,  inline: false },
                   { name: "🤖 Análise IA",  value: $ai,     inline: false },
-                  { name: "🔎 Problemas Encontrados", value: $issues, inline: false },
                   { name: "🧹 Qualidade",   value: $q,      inline: true  },
                   { name: "🛡️ Vulnerabilidades", value: $s, inline: true  },
                   { name: "🔐 Segredos",    value: $sec,    inline: true  }
