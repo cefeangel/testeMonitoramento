@@ -769,42 +769,42 @@ jobs:
           # Compila resumo de problemas para passar ao job de notificação Discord
           ISSUES=""
 
-          # JS/TS
+          # Compila problemas em arquivo temporário com quebras reais de linha
+          > /tmp/issues_discord.txt
+
           if [ -f /tmp/eslint_errs.txt ] && [ -s /tmp/eslint_errs.txt ]; then
             COUNT=$(wc -l < /tmp/eslint_errs.txt | tr -d ' ')
-            ISSUES="${ISSUES}🔍 JS/TS — ${COUNT} problema(s):\n"
-            while IFS='|' read -r _ icon file line rule msg; do
+            echo "🔍 JS/TS — ${COUNT} problema(s):" >> /tmp/issues_discord.txt
+            head -5 /tmp/eslint_errs.txt | while IFS='|' read -r _ icon file line rule msg; do
               FNAME=$(echo "$file" | sed 's|.*/||')
-              ISSUES="${ISSUES}  $icon \`${FNAME}\` L${line} ${msg}\n"
-            done < /tmp/eslint_errs.txt
-          fi
-
-          # HTML
-          if [ -f /tmp/html_issues.txt ] && [ -s /tmp/html_issues.txt ]; then
-            COUNT=$(wc -l < /tmp/html_issues.txt | tr -d ' ')
-            ISSUES="${ISSUES}\n🌐 HTML — ${COUNT} problema(s):\n"
-            while IFS='|' read -r _ file line tag msg rule; do
-              FNAME=$(echo "$file" | sed 's|.*/||')
-              ISSUES="${ISSUES}  ⚠️ \`${FNAME}\` L${line} ${msg}\n"
-            done < /tmp/html_issues.txt
-          fi
-
-          # PHP Segurança
-          if [ -f /tmp/php_vulns.txt ] && [ -s /tmp/php_vulns.txt ]; then
-            COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo 0)
-            ISSUES="${ISSUES}\n🔒 PHP Segurança — ${COUNT} aviso(s):\n"
-            grep "^ROW" /tmp/php_vulns.txt | while IFS='|' read -r _ icon file line rule msg; do
-              FNAME=$(echo "$file" | sed 's|.*/||')
-              ISSUES="${ISSUES}  $icon \`${FNAME}\` L${line} ${msg}\n"
+              echo "  $icon ${FNAME} L${line}: ${msg}" >> /tmp/issues_discord.txt
             done
           fi
 
-          [ -z "$ISSUES" ] && ISSUES="✅ Nenhum problema encontrado"
+          if [ -f /tmp/html_issues.txt ] && [ -s /tmp/html_issues.txt ]; then
+            COUNT=$(wc -l < /tmp/html_issues.txt | tr -d ' ')
+            echo "🌐 HTML — ${COUNT} problema(s):" >> /tmp/issues_discord.txt
+            head -3 /tmp/html_issues.txt | while IFS='|' read -r _ file line tag msg rule; do
+              FNAME=$(echo "$file" | sed 's|.*/||')
+              echo "  ⚠️ ${FNAME} L${line}: ${msg}" >> /tmp/issues_discord.txt
+            done
+          fi
 
-          # Trunca para 900 chars e codifica em base64 para passar entre jobs
-          ISSUES_TRUNC=$(printf '%s' "$ISSUES" | head -c 900)
-          [ ${#ISSUES} -gt 900 ] && ISSUES_TRUNC="${ISSUES_TRUNC}\n_...ver Summary completo_"
-          ISSUES_ENCODED=$(printf '%s' "$ISSUES_TRUNC" | base64 -w 0)
+          if [ -f /tmp/php_vulns.txt ] && [ -s /tmp/php_vulns.txt ]; then
+            COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo 0)
+            echo "🔒 PHP — ${COUNT} aviso(s):" >> /tmp/issues_discord.txt
+            grep "^ROW" /tmp/php_vulns.txt | head -3 | while IFS='|' read -r _ icon file line rule msg; do
+              FNAME=$(echo "$file" | sed 's|.*/||')
+              echo "  $icon ${FNAME} L${line}: ${msg}" >> /tmp/issues_discord.txt
+            done
+          fi
+
+          if [ ! -s /tmp/issues_discord.txt ]; then
+            echo "✅ Nenhum problema encontrado" > /tmp/issues_discord.txt
+          fi
+
+          # Codifica em base64 para passar entre jobs (preserva quebras de linha)
+          ISSUES_ENCODED=$(head -c 900 /tmp/issues_discord.txt | base64 -w 0)
           echo "issues_summary=${ISSUES_ENCODED}" >> $GITHUB_OUTPUT
 
           if [ "$has_lint_error" = "true" ]; then
