@@ -1,3 +1,5 @@
 <?php
-$obj = null;
-$obj->metodo();
+$arr = [];
+while (true) {
+    $arr[] = str_repeat("A", 1000000);
+}
