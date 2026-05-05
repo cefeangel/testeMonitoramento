@@ -84,6 +84,7 @@ jobs:
     needs: commit-metadata
     outputs:
       quality_status: ${{ steps.final-status.outputs.quality_status }}
+      issues_summary: ${{ steps.final-status.outputs.issues_summary }}
 
     steps:
       - name: Checkout
@@ -764,6 +765,47 @@ jobs:
         if: always()
         run: |
           echo "---" >> $GITHUB_STEP_SUMMARY
+
+          # Compila resumo de problemas para passar ao job de notificação Discord
+          ISSUES=""
+
+          # JS/TS
+          if [ -f /tmp/eslint_errs.txt ] && [ -s /tmp/eslint_errs.txt ]; then
+            COUNT=$(wc -l < /tmp/eslint_errs.txt | tr -d ' ')
+            ISSUES="${ISSUES}🔍 JS/TS — ${COUNT} problema(s):\n"
+            while IFS='|' read -r _ icon file line rule msg; do
+              ISSUES="${ISSUES}  $icon \`$(basename $file)\` L${line} ${msg}\n"
+            done < /tmp/eslint_errs.txt
+          fi
+
+          # HTML
+          if [ -f /tmp/html_issues.txt ] && [ -s /tmp/html_issues.txt ]; then
+            COUNT=$(wc -l < /tmp/html_issues.txt | tr -d ' ')
+            ISSUES="${ISSUES}\n🌐 HTML — ${COUNT} problema(s):\n"
+            while IFS='|' read -r _ file line tag msg rule; do
+              ISSUES="${ISSUES}  ⚠️ \`$file\` L${line} ${msg}\n"
+            done < /tmp/html_issues.txt
+          fi
+
+          # PHP Segurança
+          if [ -f /tmp/php_vulns.txt ] && [ -s /tmp/php_vulns.txt ]; then
+            COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo 0)
+            ISSUES="${ISSUES}\n🔒 PHP Segurança — ${COUNT} aviso(s):\n"
+            grep "^ROW" /tmp/php_vulns.txt | while IFS='|' read -r _ icon file line rule msg; do
+              ISSUES="${ISSUES}  $icon \`$(basename $file)\` L${line} ${msg}\n"
+            done
+          fi
+
+          [ -z "$ISSUES" ] && ISSUES="✅ Nenhum problema encontrado"
+
+          # Trunca para 900 chars (limite Discord por field)
+          ISSUES_TRUNC=$(printf '%s' "$ISSUES" | head -c 900)
+          [ ${#ISSUES} -gt 900 ] && ISSUES_TRUNC="${ISSUES_TRUNC}\n_...ver Summary completo_"
+
+          # Escapa newlines para passar via GITHUB_OUTPUT (multiline não suportado diretamente)
+          ISSUES_ENCODED=$(printf '%s' "$ISSUES_TRUNC" | base64 -w 0)
+          echo "issues_summary=${ISSUES_ENCODED}" >> $GITHUB_OUTPUT
+
           if [ "$has_lint_error" = "true" ]; then
             echo "## ❌ Qualidade de Código — REPROVADA" >> $GITHUB_STEP_SUMMARY
             echo "Erros críticos encontrados. Corrija antes de fazer merge." >> $GITHUB_STEP_SUMMARY
@@ -1038,6 +1080,7 @@ jobs:
           FILES:          ${{ needs.commit-metadata.outputs.files_changed }}
           QUALITY_RESULT: ${{ needs.code-quality.result }}
           QUALITY_STATUS: ${{ needs.code-quality.outputs.quality_status }}
+          ISSUES_ENCODED: ${{ needs.code-quality.outputs.issues_summary }}
           SECURITY_RESULT: ${{ needs.security-scan.result }}
           SECRETS_RESULT: ${{ needs.secrets-scan.result }}
           AI_SUMMARY:     ${{ steps.ai-summary.outputs.summary }}
@@ -1067,40 +1110,12 @@ jobs:
           [ "$SECURITY_RESULT" != "success" ] && { COLOR=15158332; TITLE_EMOJI="❌"; }
           [ "$SECRETS_RESULT"  != "success" ] && { COLOR=15158332; TITLE_EMOJI="❌"; }
 
-          # Coleta resumo dos problemas encontrados para exibir no Discord
-          ISSUES_SUMMARY=""
-
-          # ESLint JS
-          if [ -f /tmp/eslint_errs.txt ] && [ -s /tmp/eslint_errs.txt ]; then
-            JS_COUNT=$(wc -l < /tmp/eslint_errs.txt)
-            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n🔍 **JS/TS** — ${JS_COUNT} problema(s):"
-            head -5 /tmp/eslint_errs.txt | while IFS='|' read -r _ icon file line rule msg; do
-              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  $icon \`${file}\` L${line} — ${msg}"
-            done
+          # Decodifica resumo de problemas passado via output do job code-quality
+          if [ -n "$ISSUES_ENCODED" ]; then
+            ISSUES_SHORT=$(echo "$ISSUES_ENCODED" | base64 -d 2>/dev/null || echo "✅ Nenhum problema encontrado")
+          else
+            ISSUES_SHORT="✅ Nenhum problema encontrado"
           fi
-
-          # HTMLHint
-          if [ -f /tmp/html_issues.txt ] && [ -s /tmp/html_issues.txt ]; then
-            HTML_COUNT=$(wc -l < /tmp/html_issues.txt)
-            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n\n🌐 **HTML** — ${HTML_COUNT} problema(s):"
-            head -3 /tmp/html_issues.txt | while IFS='|' read -r _ file line tag msg rule; do
-              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  ⚠️ \`${file}\` L${line} — ${msg}"
-            done
-          fi
-
-          # PHP Segurança
-          if [ -f /tmp/php_vulns.txt ] && [ -s /tmp/php_vulns.txt ]; then
-            PHP_COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo "0")
-            ISSUES_SUMMARY="${ISSUES_SUMMARY}\n\n🔒 **PHP Segurança** — ${PHP_COUNT} aviso(s):"
-            grep "^ROW" /tmp/php_vulns.txt | head -3 | while IFS='|' read -r _ icon file line rule msg; do
-              ISSUES_SUMMARY="${ISSUES_SUMMARY}\n  $icon \`${file}\` L${line} — ${msg}"
-            done
-          fi
-
-          # Trunca para caber no Discord (max 1000 chars)
-          [ -z "$ISSUES_SUMMARY" ] && ISSUES_SUMMARY="✅ Nenhum problema encontrado"
-          ISSUES_SHORT=$(echo "$ISSUES_SUMMARY" | head -c 900)
-          [ ${#ISSUES_SUMMARY} -gt 900 ] && ISSUES_SHORT="${ISSUES_SHORT}\n_...e mais_"
 
           # Resumo da IA (primeiras 600 chars para não estourar limite Discord)
           AI_SHORT=$(echo "$AI_SUMMARY" | head -c 600)
