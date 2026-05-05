@@ -618,6 +618,21 @@ jobs:
               echo "ROW|⚠️|$RELFILE|$LINE|file-inclusion|File Inclusion: arquivo incluído com base em input do usuário"
             done
 
+            # 6. Code Injection — eval() com superglobal direto
+            grep -nP 'eval\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)' "$phpfile" 2>/dev/null | while IFS= read -r match; do
+              LINE=$(echo "$match" | cut -d: -f1)
+              echo "ROW|⚠️|$RELFILE|$LINE|code-injection|Code Injection: eval() executando input do usuário diretamente"
+            done
+
+            # 7. Code Injection — eval() via variável tainted
+            for VAR in $TAINTED; do
+              EVAL_PAT=$(printf 'eval\s*\(\s*\$%s' "$VAR")
+              grep -nP "$EVAL_PAT" "$phpfile" 2>/dev/null | while IFS= read -r match; do
+                LINE=$(echo "$match" | cut -d: -f1)
+                echo "ROW|⚠️|$RELFILE|$LINE|code-injection|Code Injection: eval() com \$$VAR (input do usuário)"
+              done
+            done
+
           done > /tmp/php_vulns.txt
 
           VULN_COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo "0")
