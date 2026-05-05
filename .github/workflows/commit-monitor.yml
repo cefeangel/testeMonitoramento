@@ -567,6 +567,75 @@ jobs:
             echo "✅ PHPStan sem erros" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: 🔒 Segurança PHP — Vulnerabilidades
+        if: steps.detect-lang.outputs.has_php == 'true'
+        continue-on-error: true
+        run: |
+          echo "### 🔒 Segurança PHP — Análise de Vulnerabilidades" >> $GITHUB_STEP_SUMMARY
+
+          find . -name "*.php" \
+            -not -path "*/vendor/*" -not -path "*/node_modules/*" \
+            -maxdepth 6 | while read -r phpfile; do
+
+            RELFILE=$(echo "$phpfile" | sed "s|.*/work/[^/]*/[^/]*/||" | sed "s|^\.\?/||")
+
+            # 1. SQL Injection direto
+            grep -nP '(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE).+\$_(GET|POST|REQUEST|COOKIE)' "$phpfile" 2>/dev/null | while IFS= read -r match; do
+              LINE=$(echo "$match" | cut -d: -f1)
+              echo "ROW|❌|$RELFILE|$LINE|sql-injection|SQL Injection: input do usuário direto em query SQL"
+            done
+
+            # 2. SQL Injection via variável intermediária
+            TAINTED=$(grep -oP '^\$\K[a-zA-Z_][a-zA-Z0-9_]*(?= = \$_(GET|POST|REQUEST|COOKIE))' "$phpfile" 2>/dev/null | sort -u)
+            for VAR in $TAINTED; do
+              SQL_PAT=$(printf '(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE).*\$%s' "$VAR")
+              grep -nP "$SQL_PAT" "$phpfile" 2>/dev/null | while IFS= read -r match; do
+                LINE=$(echo "$match" | cut -d: -f1)
+                echo "ROW|❌|$RELFILE|$LINE|sql-injection|SQL Injection: \$$VAR vem de input do usuário"
+              done
+              XSS_PAT=$(printf '(echo|print)\s+\$%s\b' "$VAR")
+              grep -nP "$XSS_PAT" "$phpfile" 2>/dev/null | while IFS= read -r match; do
+                LINE=$(echo "$match" | cut -d: -f1)
+                echo "ROW|⚠️|$RELFILE|$LINE|xss|XSS: \$$VAR (input do usuário) exibida sem sanitização"
+              done
+            done
+
+            # 3. XSS direto
+            grep -nP '(echo|print)\s+\$_(GET|POST|REQUEST|COOKIE)' "$phpfile" 2>/dev/null | while IFS= read -r match; do
+              LINE=$(echo "$match" | cut -d: -f1)
+              echo "ROW|❌|$RELFILE|$LINE|xss|XSS: dados do usuário exibidos sem htmlspecialchars()"
+            done
+
+            # 4. Command Injection
+            grep -nP '(system|exec|shell_exec|passthru|popen)\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)' "$phpfile" 2>/dev/null | while IFS= read -r match; do
+              LINE=$(echo "$match" | cut -d: -f1)
+              echo "ROW|❌|$RELFILE|$LINE|command-injection|Command Injection: input do usuário executado como comando"
+            done
+
+            # 5. File Inclusion
+            grep -nP '(include|require|include_once|require_once)\s*\(\s*\$_(GET|POST|REQUEST)' "$phpfile" 2>/dev/null | while IFS= read -r match; do
+              LINE=$(echo "$match" | cut -d: -f1)
+              echo "ROW|❌|$RELFILE|$LINE|file-inclusion|File Inclusion: arquivo incluído com base em input do usuário"
+            done
+
+          done > /tmp/php_vulns.txt
+
+          VULN_COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo "0")
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$VULN_COUNT" -gt 0 ] 2>/dev/null; then
+            echo "❌ **$VULN_COUNT vulnerabilidade(s) de segurança PHP encontrada(s)**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Tipo | Arquivo | Linha | Regra | Problema |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------|-------|-------|----------|" >> $GITHUB_STEP_SUMMARY
+            grep "^ROW" /tmp/php_vulns.txt | while IFS='|' read -r _ icon file line rule msg; do
+              echo "| $icon | \`$file\` | $line | \`$rule\` | $msg |" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "has_lint_error=true" >> $GITHUB_ENV
+          else
+            echo "✅ Nenhuma vulnerabilidade óbvia detectada no PHP" >> $GITHUB_STEP_SUMMARY
+          fi
+
       # ── Python ───────────────────────────────
       - name: Setup Python
         if: steps.detect-lang.outputs.has_py == 'true'
