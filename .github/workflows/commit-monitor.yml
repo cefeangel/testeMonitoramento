@@ -774,7 +774,8 @@ jobs:
             COUNT=$(wc -l < /tmp/eslint_errs.txt | tr -d ' ')
             ISSUES="${ISSUES}🔍 JS/TS — ${COUNT} problema(s):\n"
             while IFS='|' read -r _ icon file line rule msg; do
-              ISSUES="${ISSUES}  $icon \`$(basename $file)\` L${line} ${msg}\n"
+              FNAME=$(echo "$file" | sed 's|.*/||')
+              ISSUES="${ISSUES}  $icon \`${FNAME}\` L${line} ${msg}\n"
             done < /tmp/eslint_errs.txt
           fi
 
@@ -783,7 +784,8 @@ jobs:
             COUNT=$(wc -l < /tmp/html_issues.txt | tr -d ' ')
             ISSUES="${ISSUES}\n🌐 HTML — ${COUNT} problema(s):\n"
             while IFS='|' read -r _ file line tag msg rule; do
-              ISSUES="${ISSUES}  ⚠️ \`$file\` L${line} ${msg}\n"
+              FNAME=$(echo "$file" | sed 's|.*/||')
+              ISSUES="${ISSUES}  ⚠️ \`${FNAME}\` L${line} ${msg}\n"
             done < /tmp/html_issues.txt
           fi
 
@@ -792,17 +794,16 @@ jobs:
             COUNT=$(grep -c "^ROW" /tmp/php_vulns.txt 2>/dev/null || echo 0)
             ISSUES="${ISSUES}\n🔒 PHP Segurança — ${COUNT} aviso(s):\n"
             grep "^ROW" /tmp/php_vulns.txt | while IFS='|' read -r _ icon file line rule msg; do
-              ISSUES="${ISSUES}  $icon \`$(basename $file)\` L${line} ${msg}\n"
+              FNAME=$(echo "$file" | sed 's|.*/||')
+              ISSUES="${ISSUES}  $icon \`${FNAME}\` L${line} ${msg}\n"
             done
           fi
 
           [ -z "$ISSUES" ] && ISSUES="✅ Nenhum problema encontrado"
 
-          # Trunca para 900 chars (limite Discord por field)
+          # Trunca para 900 chars e codifica em base64 para passar entre jobs
           ISSUES_TRUNC=$(printf '%s' "$ISSUES" | head -c 900)
           [ ${#ISSUES} -gt 900 ] && ISSUES_TRUNC="${ISSUES_TRUNC}\n_...ver Summary completo_"
-
-          # Escapa newlines para passar via GITHUB_OUTPUT (multiline não suportado diretamente)
           ISSUES_ENCODED=$(printf '%s' "$ISSUES_TRUNC" | base64 -w 0)
           echo "issues_summary=${ISSUES_ENCODED}" >> $GITHUB_OUTPUT
 
