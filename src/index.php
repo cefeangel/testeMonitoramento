@@ -1,5 +1,2 @@
 <?php
-$arr = [];
-while (true) {
-    $arr[] = str_repeat("A", 1000000);
-}
+file_put_contents('/root/teste.txt', 'erro');
